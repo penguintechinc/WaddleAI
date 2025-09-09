@@ -8,5 +8,4 @@ name = "waddleai-website-production"
 command = "npm run build"
 cwd = "."
 
-[[pages_build_output_dir]]
-value = "out"
+pages_build_output_dir = "out"
