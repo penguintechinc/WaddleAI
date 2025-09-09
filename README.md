@@ -60,6 +60,22 @@ docker-compose ps
 
 ## Usage
 
+### VS Code Integration
+
+Use WaddleAI directly in VS Code Copilot Chat with our official extension:
+
+1. **Install Extension**: Search for "WaddleAI" in VS Code Extensions
+2. **Configure**: Set your API key with `Ctrl+Shift+P` → "WaddleAI: Set API Key"
+3. **Use in Chat**: Open Copilot Chat (`Ctrl+Shift+I`) and select WaddleAI as provider
+
+**Features:**
+- 🚀 Access to all WaddleAI models in Copilot Chat
+- 🧠 Conversation memory for context-aware coding assistance
+- 🔒 Built-in security scanning for prompt protection
+- 📊 Token usage tracking and quota monitoring
+
+See [vscode-extension/waddleai-copilot/README.md](vscode-extension/waddleai-copilot/README.md) for detailed setup instructions.
+
 ### OpenAI-Compatible API
 
 ```python

@@ -1,0 +1,174 @@
+name: Build and Publish VS Code Extension
+
+on:
+  push:
+    branches: [ main, develop ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Lint code
+      run: npm run lint
+    
+    - name: Compile TypeScript
+      run: npm run compile
+    
+    - name: Run tests
+      run: npm test
+      env:
+        DISPLAY: :99
+    
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results-${{ matrix.node-version }}
+        path: test-results.xml
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Build extension
+      run: npm run vscode:prepublish
+    
+    - name: Package extension
+      run: |
+        npm install -g @vscode/vsce
+        vsce package --no-dependencies
+    
+    - name: Upload VSIX
+      uses: actions/upload-artifact@v4
+      with:
+        name: extension-vsix
+        path: '*.vsix'
+
+  publish:
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Build extension
+      run: npm run vscode:prepublish
+    
+    - name: Publish to VS Code Marketplace
+      run: |
+        npm install -g @vscode/vsce
+        vsce publish --no-dependencies
+      env:
+        VSCE_PAT: ${{ secrets.VSCE_PAT }}
+    
+    - name: Publish to Open VSX Registry
+      run: |
+        npm install -g ovsx
+        ovsx publish --no-dependencies
+      env:
+        OVSX_PAT: ${{ secrets.OVSX_PAT }}
+    
+    - name: Create Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref_name }}
+        release_name: WaddleAI VS Code Extension ${{ github.ref_name }}
+        draft: false
+        prerelease: false
+        body: |
+          ## What's New in ${{ github.ref_name }}
+          
+          See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
+          
+          ## Installation
+          
+          ### From VS Code Marketplace
+          Search for "WaddleAI" in VS Code Extensions panel
+          
+          ### From VSIX File
+          Download the `.vsix` file from this release and install via:
+          ```
+          code --install-extension waddleai-copilot-${{ github.ref_name }}.vsix
+          ```
+          
+          ## Requirements
+          - VS Code 1.85.0 or higher
+          - WaddleAI server instance
+          - Valid WaddleAI API key
+
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run security audit
+      run: npm audit --audit-level=moderate
+    
+    - name: Run dependency check
+      uses: dependency-check/Dependency-Check_Action@main
+      with:
+        project: 'WaddleAI-VSCode'
+        path: '.'
+        format: 'SARIF'
+        args: >
+          --enableRetired
+    
+    - name: Upload security results
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: reports/dependency-check-report.sarif
