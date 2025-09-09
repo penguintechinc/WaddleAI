@@ -1,6 +1,0 @@
-name = "waddleai-docs"
-compatibility_date = "2024-01-01"
-pages_build_output_dir = "site"
-
-[build]
-command = "cd docs-site && mkdocs build && mv site ../site"
