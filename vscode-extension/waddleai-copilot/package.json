@@ -1,0 +1,154 @@
+{
+  "name": "waddleai-copilot",
+  "displayName": "WaddleAI Chat Participant",
+  "description": "Use WaddleAI's enterprise AI proxy as a chat participant in VS Code",
+  "version": "0.1.0",
+  "publisher": "waddleai",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "chat",
+    "ai",
+    "participant",
+    "waddleai",
+    "llm",
+    "assistant"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "WaddleAI",
+      "properties": {
+        "waddleai.apiEndpoint": {
+          "type": "string",
+          "default": "http://localhost:8000",
+          "description": "WaddleAI proxy server endpoint URL"
+        },
+        "waddleai.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Your WaddleAI API key",
+          "markdownDescription": "Your WaddleAI API key. Get one from your WaddleAI management portal."
+        },
+        "waddleai.defaultModel": {
+          "type": "string",
+          "default": "gpt-4",
+          "enum": [
+            "gpt-4",
+            "gpt-3.5-turbo",
+            "claude-3-opus-20240229",
+            "claude-3-sonnet-20240229",
+            "llama2",
+            "codellama"
+          ],
+          "description": "Default model to use for chat completions"
+        },
+        "waddleai.enableMemory": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable conversation memory enhancement"
+        },
+        "waddleai.enableSecurityScanning": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable prompt security scanning"
+        },
+        "waddleai.maxTokens": {
+          "type": "number",
+          "default": 2048,
+          "description": "Maximum tokens for responses"
+        },
+        "waddleai.temperature": {
+          "type": "number",
+          "default": 0.7,
+          "minimum": 0,
+          "maximum": 2,
+          "description": "Temperature for response generation"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "waddleai.setApiKey",
+        "title": "WaddleAI: Set API Key"
+      },
+      {
+        "command": "waddleai.selectModel",
+        "title": "WaddleAI: Select Model"
+      },
+      {
+        "command": "waddleai.testConnection",
+        "title": "WaddleAI: Test Connection"
+      },
+      {
+        "command": "waddleai.showUsage",
+        "title": "WaddleAI: Show Token Usage"
+      },
+      {
+        "command": "waddleai.clearMemory",
+        "title": "WaddleAI: Clear Conversation Memory"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "waddleai.setApiKey"
+        },
+        {
+          "command": "waddleai.selectModel"
+        },
+        {
+          "command": "waddleai.testConnection"
+        },
+        {
+          "command": "waddleai.showUsage"
+        },
+        {
+          "command": "waddleai.clearMemory"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "echo \"No tests specified\"",
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "devDependencies": {
+    "@types/node": "20.x",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0",
+    "@vscode/test-electron": "^2.3.8",
+    "@vscode/vsce": "^2.32.0",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "axios": "^1.6.2",
+    "openai": "^4.24.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/waddleai/vscode-extension"
+  },
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#1E90FF",
+    "theme": "dark"
+  }
+}
