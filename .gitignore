@@ -1,3 +1,66 @@
+# Planning and TODO files (not tracked in git)
+.PLAN
+.TODO
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyDAL databases
+databases/
+
+# py4web specific
+apps/*/databases/
+apps/*/errors/
+apps/*/sessions/
+apps/*/uploads/
+apps/*/private/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Configuration files with sensitive data
+**/config/production.py
+**/config/secrets.py
+**/secrets.yaml
+*.key
+*.pem
+*.cert
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# MkDocs build output
+docs/docs-site/site/
+
 # Logs
 logs
 *.log

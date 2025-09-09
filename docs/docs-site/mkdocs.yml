@@ -1,0 +1,121 @@
+site_name: WaddleAI Documentation
+site_url: https://docs.waddleai.com
+site_description: AI proxy and management system with OpenAI-compatible APIs
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+  palette:
+    - scheme: default
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+  logo: assets/logo.svg
+  favicon: assets/favicon.ico
+
+nav:
+  - Home: index.md
+  - Claude Integration: claude.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quick-start.md
+    - Configuration: getting-started/configuration.md
+  - API Reference:
+    - OpenAI Compatible: api/openai-compatible.md
+    - Management API: api/management-api.md
+    - Authentication: api/authentication.md
+    - Examples: api/examples.md
+  - Administration:
+    - User Management: administration/user-management.md
+    - Organizations: administration/organization-setup.md
+    - Quota Management: administration/quota-management.md
+    - Security Policies: administration/security-policies.md
+    - Monitoring: administration/monitoring.md
+  - Deployment:
+    - Docker Compose: deployment/docker-compose.md
+    - Kubernetes: deployment/kubernetes.md
+    - Cloudflare: deployment/cloudflare.md
+    - Production Checklist: deployment/production-checklist.md
+  - Integrations:
+    - Ollama Setup: integrations/ollama-setup.md
+    - Anthropic Config: integrations/anthropic-config.md
+    - OpenAI Config: integrations/openai-config.md
+    - Memory Systems: integrations/memory-systems.md
+    - MCP Protocol: integrations/mcp-protocol.md
+  - Troubleshooting:
+    - Common Issues: troubleshooting/common-issues.md
+    - Performance Tuning: troubleshooting/performance-tuning.md
+    - Security Issues: troubleshooting/security-troubleshooting.md
+
+plugins:
+  - search
+  - mermaid2:
+      version: 10.6.1
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - pymdownx.details
+  - pymdownx.critic
+  - pymdownx.caret
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.tilde
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - abbr
+  - def_list
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/your-org/waddleai
+    - icon: fontawesome/brands/twitter
+      link: https://twitter.com/waddleai
+    - icon: fontawesome/brands/discord
+      link: https://discord.gg/waddleai
+  version:
+    provider: mike
+
+extra_css:
+  - stylesheets/extra.css
+
+copyright: Copyright &copy; 2024 WaddleAI Team

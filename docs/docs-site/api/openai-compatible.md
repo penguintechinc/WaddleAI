@@ -1,0 +1,1 @@
+../../api/openai-compatible.md

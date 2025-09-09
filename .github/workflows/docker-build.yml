@@ -1,0 +1,272 @@
+name: Build and Push Multi-Architecture Docker Images
+
+on:
+  push:
+    branches: [ main, v1.x ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME_PROXY: ${{ github.repository }}/proxy
+  IMAGE_NAME_MANAGEMENT: ${{ github.repository }}/management
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.13]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-asyncio pytest-cov
+    
+    - name: Run unit tests
+      run: |
+        python -m pytest tests/unit/ -v --cov=shared --cov-report=xml --cov-report=html
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [proxy, management]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Log in to Container Registry
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Extract metadata (tags, labels) for Docker
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.service }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+          type=raw,value=latest,enable={{is_default_branch}}
+    
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./${{ matrix.service }}/Dockerfile
+        platforms: linux/amd64,linux/arm64
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+          VCS_REF=${{ github.sha }}
+
+  security-scan:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [proxy, management]
+    
+    steps:
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      if: github.event_name != 'pull_request'
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.service }}:${{ github.ref_name }}
+        format: 'sarif'
+        output: 'trivy-results-${{ matrix.service }}.sarif'
+    
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      if: github.event_name != 'pull_request'
+      with:
+        sarif_file: 'trivy-results-${{ matrix.service }}.sarif'
+
+  integration-test:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Create test environment
+      run: |
+        # Create docker-compose override for testing
+        cat << EOF > docker-compose.test.yml
+        version: '3.8'
+        services:
+          proxy:
+            image: ${{ env.REGISTRY }}/${{ github.repository }}/proxy:${{ github.ref_name }}
+            ports:
+              - "8000:8000"
+            environment:
+              - DATABASE_URL=sqlite:///tmp/test.db
+              - LOG_LEVEL=DEBUG
+            depends_on:
+              - db
+          
+          management:
+            image: ${{ env.REGISTRY }}/${{ github.repository }}/management:${{ github.ref_name }}
+            ports:
+              - "8001:8001"
+            environment:
+              - DATABASE_URL=sqlite:///tmp/test.db
+              - LOG_LEVEL=DEBUG
+            depends_on:
+              - db
+          
+          db:
+            image: postgres:15-alpine
+            environment:
+              POSTGRES_DB: waddleai_test
+              POSTGRES_USER: test
+              POSTGRES_PASSWORD: test
+            ports:
+              - "5432:5432"
+        EOF
+    
+    - name: Start services
+      run: |
+        docker-compose -f docker-compose.test.yml up -d
+        sleep 30  # Wait for services to start
+    
+    - name: Test proxy health endpoint
+      run: |
+        curl -f http://localhost:8000/health || exit 1
+        curl -f http://localhost:8000/metrics || exit 1
+    
+    - name: Test management health endpoint
+      run: |
+        curl -f http://localhost:8001/health || exit 1
+        curl -f http://localhost:8001/metrics || exit 1
+    
+    - name: Test OpenAI-compatible API endpoint
+      run: |
+        # Test that the proxy accepts requests (should return 401 without auth)
+        response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/v1/chat/completions)
+        if [ "$response" != "401" ]; then
+          echo "Expected 401 response, got $response"
+          exit 1
+        fi
+    
+    - name: Cleanup
+      if: always()
+      run: |
+        docker-compose -f docker-compose.test.yml down -v
+
+  release:
+    needs: [test, build-and-push, security-scan, integration-test]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Generate changelog
+      id: changelog
+      run: |
+        # Simple changelog generation from git log
+        echo "## What's Changed" > CHANGELOG.md
+        git log --pretty=format:"* %s (%h)" $(git describe --tags --abbrev=0 HEAD^)..HEAD >> CHANGELOG.md
+        echo "" >> CHANGELOG.md
+        echo "" >> CHANGELOG.md
+        echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$(git describe --tags --abbrev=0 HEAD^)...${GITHUB_REF_NAME}" >> CHANGELOG.md
+    
+    - name: Create Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref_name }}
+        release_name: WaddleAI ${{ github.ref_name }}
+        body_path: CHANGELOG.md
+        draft: false
+        prerelease: false
+
+  cleanup:
+    needs: [test, build-and-push, security-scan, integration-test]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Delete untagged images
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const response = await github.rest.packages.getAllPackageVersionsForPackageOwnedByOrg({
+            package_type: 'container',
+            package_name: 'waddleai/proxy',
+            org: context.repo.owner,
+          });
+          
+          for (const version of response.data) {
+            if (version.metadata.container.tags.length === 0) {
+              console.log(`Deleting untagged version: ${version.id}`);
+              await github.rest.packages.deletePackageVersionForOrg({
+                package_type: 'container',
+                package_name: 'waddleai/proxy',
+                org: context.repo.owner,
+                package_version_id: version.id,
+              });
+            }
+          }
