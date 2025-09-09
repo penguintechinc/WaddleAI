@@ -355,7 +355,7 @@ export default function DeploymentArchitecture() {
                         {Object.entries(component.specs).map(([key, value]) => (
                           <div key={key} className="flex justify-between">
                             <span className="capitalize">{key}:</span>
-                            <span className="font-medium">{value}</span>
+                            <span className="font-medium">{String(value)}</span>
                           </div>
                         ))}
                       </div>
