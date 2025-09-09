@@ -250,7 +250,7 @@ jobs:
     
     steps:
     - name: Delete untagged images
-      uses: actions/github-script@v6
+      uses: actions/github-script@v8
       with:
         script: |
           const response = await github.rest.packages.getAllPackageVersionsForPackageOwnedByOrg({
