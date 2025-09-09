@@ -6,6 +6,7 @@ WaddleAI is a comprehensive AI proxy and management system that provides OpenAI-
 
 - **OpenAI-Compatible API** - Drop-in replacement for OpenAI API
 - **Multi-LLM Support** - Route to OpenAI, Anthropic, Ollama, and more
+- **VS Code Extension** - Native integration with VS Code Chat interface
 - **Role-Based Access Control** - Admin, Resource Manager, Reporter, User roles
 - **Dual Token System** - WaddleAI tokens for billing, LLM tokens for analytics
 - **Security Scanning** - Prompt injection and jailbreak detection
@@ -13,6 +14,7 @@ WaddleAI is a comprehensive AI proxy and management system that provides OpenAI-
 - **Multi-Tenant** - Organization-based isolation
 - **Monitoring** - Prometheus metrics and health checks
 - **Memory Integration** - Conversation memory with mem0/ChromaDB
+- **OpenWebUI Integration** - Modern web interface for testing and development
 
 ## Architecture
 
@@ -63,9 +65,10 @@ usage = requests.get("/analytics/usage",
 - **[Claude Integration](CLAUDE.md)** - Integration guide for applications
 - **[Getting Started](getting-started/)** - Installation and setup
 - **[API Reference](api/)** - Complete API documentation
+- **[Integrations](integrations/)** - VS Code extension, OpenWebUI, and LLM provider setup
 - **[Administration](administration/)** - User and system management
 - **[Deployment](deployment/)** - Production deployment guides
-- **[Integrations](integrations/)** - LLM provider setup
+- **[Testing Setup](../TESTING_SETUP.md)** - Complete testing environment with OpenWebUI
 - **[Troubleshooting](troubleshooting/)** - Common issues and solutions
 
 ## Roles and Permissions

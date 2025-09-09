@@ -1,5 +1,14 @@
 # WaddleAI
 
+```
+██╗    ██╗ █████╗ ██████╗ ██████╗ ██╗     ███████╗ █████╗ ██╗
+██║    ██║██╔══██╗██╔══██╗██╔══██╗██║     ██╔════╝██╔══██╗██║
+██║ █╗ ██║███████║██║  ██║██║  ██║██║     █████╗  ███████║██║
+██║███╗██║██╔══██║██║  ██║██║  ██║██║     ██╔══╝  ██╔══██║██║
+╚███╔███╔╝██║  ██║██████╔╝██████╔╝███████╗███████╗██║  ██║██║
+ ╚══╝╚══╝ ╚═╝  ╚═╝╚═════╝ ╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═╝╚═╝
+```
+
 Enterprise-grade AI proxy and management system with OpenAI-compatible APIs, advanced routing, security, and token management.
 
 ![WaddleAI Architecture](docs/assets/architecture-diagram.svg)

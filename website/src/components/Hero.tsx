@@ -33,13 +33,13 @@ export default function Hero() {
             </h1>
             
             <p className="text-xl lg:text-2xl text-gray-600 mb-8 leading-relaxed">
-              Enterprise-grade AI proxy with OpenAI-compatible APIs, advanced routing, 
-              security scanning, and comprehensive token management.
+              Enterprise-grade AI proxy with OpenAI-compatible APIs, VS Code integration, 
+              OpenWebUI interface, advanced routing, security scanning, and comprehensive token management.
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4 mb-8">
               <motion.a
-                href="/docs/getting-started/installation/"
+                href="https://docs.waddlebot.ai/getting-started/installation/"
                 className="btn-primary inline-flex items-center justify-center"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -49,7 +49,7 @@ export default function Hero() {
               </motion.a>
               
               <motion.a
-                href="/docs/claude/"
+                href="https://docs.waddlebot.ai/"
                 className="btn-secondary inline-flex items-center justify-center"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -96,17 +96,20 @@ export default function Hero() {
                 <div className="text-gray-400 mb-4">✓ Installing WaddleAI...</div>
                 
                 <div className="border-t border-gray-700 pt-4">
-                  <div className="text-yellow-400 mb-2"># Start proxy server</div>
+                  <div className="text-yellow-400 mb-2"># Start with Docker Compose</div>
                   <div className="mb-2">
                     <span className="text-blue-400">$</span>
-                    <span className="ml-2">waddleai start --proxy</span>
+                    <span className="ml-2">docker-compose -f docker-compose.testing.yml up</span>
                   </div>
-                  <div className="text-gray-400 mb-2">✓ Proxy server running on :8000</div>
+                  <div className="text-gray-400 mb-2">✓ WaddleAI + OpenWebUI running</div>
                   
-                  <div className="text-yellow-400 mb-2"># Configure OpenAI client</div>
+                  <div className="text-yellow-400 mb-2"># Use in VS Code Chat</div>
+                  <div className="text-white mb-2">@waddleai Help me write a REST API</div>
+                  <div className="text-gray-400 mb-2">✓ Context-aware AI assistance</div>
+                  
+                  <div className="text-yellow-400 mb-2"># Or use OpenAI client</div>
                   <div className="text-white">
                     <div>client = OpenAI(</div>
-                    <div className="ml-4">api_key="wa-your-key",</div>
                     <div className="ml-4">base_url="http://localhost:8000/v1"</div>
                     <div>)</div>
                   </div>
@@ -116,11 +119,11 @@ export default function Hero() {
             
             {/* Floating elements */}
             <motion.div
-              className="absolute -top-6 -right-6 bg-primary-500 text-white rounded-lg px-4 py-2 text-sm font-semibold shadow-lg"
+              className="absolute -top-6 -right-6 bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-semibold shadow-lg"
               animate={{ y: [0, -10, 0] }}
               transition={{ repeat: Infinity, duration: 3, delay: 1 }}
             >
-              OpenAI Compatible
+              VS Code Ready
             </motion.div>
             
             <motion.div
@@ -128,7 +131,15 @@ export default function Hero() {
               animate={{ y: [0, -10, 0] }}
               transition={{ repeat: Infinity, duration: 3, delay: 2 }}
             >
-              Enterprise Ready
+              OpenWebUI Included
+            </motion.div>
+            
+            <motion.div
+              className="absolute top-1/2 -left-8 bg-purple-500 text-white rounded-lg px-3 py-1 text-xs font-semibold shadow-lg"
+              animate={{ x: [0, -10, 0] }}
+              transition={{ repeat: Infinity, duration: 4, delay: 0.5 }}
+            >
+              OpenAI Compatible
             </motion.div>
           </motion.div>
         </div>

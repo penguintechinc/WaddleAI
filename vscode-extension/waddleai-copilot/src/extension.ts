@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { WaddleAILanguageModelProvider } from './languageModelProvider';
+import { WaddleAIChatParticipant } from './chatParticipant';
 import { WaddleAIClient } from './waddleaiClient';
 import { AuthenticationProvider } from './authProvider';
 
@@ -15,15 +15,14 @@ export function activate(context: vscode.ExtensionContext) {
     // Initialize WaddleAI client
     waddleAIClient = new WaddleAIClient(context);
 
-    // Register the language model provider for Copilot Chat
-    const provider = new WaddleAILanguageModelProvider(waddleAIClient, context);
+    // Register WaddleAI chat participant
+    const participant = new WaddleAIChatParticipant(waddleAIClient, context);
+    const chatParticipant = vscode.chat.createChatParticipant('waddleai', participant.handleRequest.bind(participant));
     
-    // Register with VS Code's language model API
-    const registration = vscode.lm.registerLanguageModelProvider(
-        'waddleai',
-        provider
-    );
-    context.subscriptions.push(registration);
+    chatParticipant.iconPath = vscode.Uri.joinPath(context.extensionUri, 'media', 'icon.svg');
+    chatParticipant.requestHandler = participant.handleRequest.bind(participant);
+    
+    context.subscriptions.push(chatParticipant);
 
     // Register commands
     registerCommands(context);

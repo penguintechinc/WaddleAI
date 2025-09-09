@@ -58,8 +58,9 @@ ENV/
 env.bak/
 venv.bak/
 
-# MkDocs build output
+# MkDocs build output and virtual environment
 docs/docs-site/site/
+docs/docs-site/mkdocs-env/
 
 # Logs
 logs
