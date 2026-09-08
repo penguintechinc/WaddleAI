@@ -161,6 +161,48 @@ Embedding models do not count against this. Their work is a single forward pass
 rather than sequential token generation, and `nomic-embed-text` at 0.32 GB does
 not contend meaningfully.
 
+### Other vendors and NVIDIA A-series
+
+**The xx70/xx80/xx90 table above is NVIDIA consumer naming and does not
+generalise.** The ceiling is set by memory bandwidth, not by a model number, so
+for anything else use the method rather than a table: run one generation, then
+two, then three, and compute aggregate work as the sum of each stream's
+percentage of its solo throughput. **The ceiling is the count after which
+aggregate work stops rising.** That is exactly how the xx80 = 2 figure above was
+derived, and it works on any vendor.
+
+Starting points by family, none of them measured here:
+
+| Family | Start at | Notes |
+|---|---|---|
+| NVIDIA `A2`, `A16`, `RTX A2000`/`A3000` | 1 | Bandwidth well below a consumer xx80 |
+| NVIDIA `A10`, `A40`, `RTX A4000`–`A6000` | 2 | GDDR6, broadly xx80-class bandwidth |
+| NVIDIA `A100`, `A30` | 3+ | HBM2e bandwidth far exceeds consumer cards; see MIG below |
+| AMD RX 7900 XTX / XT, PRO W7900 | 2 | Bandwidth comparable to a consumer xx80 |
+| AMD Instinct `MI250`/`MI300X` | 3+ | HBM, datacenter-class |
+| Intel Arc (via Vulkan) | 1 | See the Vulkan caveat below |
+
+**MIG changes the question entirely.** `A100` and `A30` can be partitioned into
+isolated instances with dedicated SMs and memory. On a MIG-partitioned card the
+limit applies **per instance**, not per physical GPU — one generating LLM per
+instance is the natural mapping, and it gives hard isolation that time-slicing
+a whole GPU does not.
+
+#### Vendor support is a gate before any sizing
+
+Sizing is irrelevant if Ollama will not use the card. Per
+[Ollama's GPU documentation](https://github.com/ollama/ollama/blob/main/docs/gpu.mdx):
+
+| Vendor | Requirement | Watch out for |
+|---|---|---|
+| NVIDIA | Compute capability 5.0+, driver 550+ (570+ for CC 5.0–6.2) | — |
+| AMD | ROCm v7 on Linux; ROCm v7 / HIP7 on Windows | **The Windows supported list is narrower than Linux.** Unsupported-but-close cards may work via `HSA_OVERRIDE_GFX_VERSION` |
+| Intel | **Vulkan only** — no dedicated backend | Ollama's docs note Vulkan provides less information for optimal scheduling. Disable with `OLLAMA_VULKAN=0` if it misbehaves |
+
+Because Intel runs through Vulkan rather than a vendor compute stack, treat
+CUDA/ROCm-derived heuristics as unreliable there and measure before committing
+to a concurrency figure.
+
 Size the two limits separately:
 
 - **Resident** count → VRAM and `OLLAMA_MAX_LOADED_MODELS`
