@@ -95,12 +95,16 @@ categories:
   credential-harvesting: {action: block}
 guard_prompt: |
   ...definition of each category, in the guard's instruction slot...
-recommended_guard: shieldgemma:2b
 ```
 
-`recommended_guard` is advisory. The model that actually runs is resolved from
-`model_assignments` (`security-audit` tool type), so a deployment can run Granite
-Guardian instead without forking the bundle.
+**A bundle names no model.** There is deliberately no `recommended_guard` or
+equivalent field: bundles and the model inventory are independent axes that meet
+only at runtime resolution. A bundle says *what* to classify for and supplies the
+knowledge to do it; the inventory says *which models exist and where*; the
+`security-audit` row in `model_assignments` marries them per deployment. That
+independence is what lets a deployment swap ShieldGemma for Granite Guardian, or
+retire a model entirely, without touching a single bundle definition — and lets a
+bundle be authored without knowing which models a deployment runs.
 
 ### Storage
 
@@ -212,8 +216,24 @@ that bundle's attacks look like.
   premise is the whole reason for the design; if it does not hold, the corpus
   layer needs rethinking before it ships.
 
+## Relationship to model inventory
+
+Model inventory — a global-admin surface declaring which models are offered from
+which servers, validated against the target system — is **separate work with its
+own spec**. Bundles do not reference it and it does not reference bundles.
+
+The two are married at exactly one point: when a request's effective bundle set
+is resolved, the guard model that executes the classification is looked up
+through the normal `model_assignments` path. Everything upstream of that lookup
+is model-agnostic; everything downstream is bundle-agnostic.
+
+Keeping the axes independent is what makes each one changeable alone. A new
+bundle ships without a model decision; a retired model does not invalidate a
+bundle.
+
 ## Out of scope
 
+- Model inventory and model-existence validation (separate spec)
 - Org-authored bundle *definitions* (schema is ready; surface stays closed).
   Note this is distinct from the tenant always-on *selection* above, which IS
   in scope: tenants choose which shipped bundles are mandatory for them, they
