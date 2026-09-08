@@ -102,9 +102,21 @@ equivalent field: bundles and the model inventory are independent axes that meet
 only at runtime resolution. A bundle says *what* to classify for and supplies the
 knowledge to do it; the inventory says *which models exist and where*; the
 `security-audit` row in `model_assignments` marries them per deployment. That
-independence is what lets a deployment swap ShieldGemma for Granite Guardian, or
-retire a model entirely, without touching a single bundle definition — and lets a
-bundle be authored without knowing which models a deployment runs.
+independence is what lets a bundle be authored without knowing which models a
+deployment runs.
+
+**The marriage is per-request, not per-deployment.** The guard model is resolved
+on each request, so it can change between two consecutive requests carrying the
+identical bundle set — because the primary guard is unhealthy, because a new
+version rolled out, because org policy or a model-access rule rerouted it. The
+bundle is unaffected: same categories, same corpus, same actions, executed by
+whatever guard is live for that request. This reuses the substitution machinery
+that already exists (`model_assignments.fallback_models`, per-org destination
+failover, `model_access_policies` reroute) rather than adding a bundle-specific
+one.
+
+The consequence for the response contract is below: if the guard can change
+per request, the caller must be told which one actually ran.
 
 ### Storage
 
@@ -176,9 +188,15 @@ things would be misused.
 protected when it is not. Fail closed and loud.
 
 **The response reports what actually ran**, in `usage.waddleai.classifiers`:
-the effective bundle list with versions, and which level contributed each. Same
-rule as `routed_from` — never a silent substitution, and a caller can confirm
-its addition took effect.
+the effective bundle list with versions, which level contributed each, **and the
+guard model that executed them**. Same rule as `routed_from` — never a silent
+substitution.
+
+The guard model belongs in that report precisely because it is resolved
+per-request and may differ from the configured primary. A verdict produced by a
+failover guard is not necessarily the verdict the primary would have produced,
+so "which model judged this" is part of the answer, not deployment trivia. It is
+also the only way to debug a verdict that changed without any bundle changing.
 
 ### Corpus into the guard
 
@@ -196,7 +214,8 @@ that bundle's attacks look like.
 |---|---|
 | Unknown bundle name in header | 400, naming the unknown bundle |
 | Bundle enabled but corpus retrieval fails | Classify without retrieval, log a warning; degraded, not skipped |
-| Guard model unreachable | Existing `fail_mode` from the resolved policy governs; unchanged |
+| Guard model unreachable | Substitution is attempted first (fallback chain / destination failover); only if no guard is reachable does the resolved policy's `fail_mode` govern. The response reports whichever guard ran |
+| Guard substituted mid-flight | Not an error. Verdicts stand, and `usage.waddleai.classifiers.guard_model` names the model that produced them |
 | Mandatory guard disabled by global admin | Audit row + startup banner, every request |
 | Tenant admin tries to disable a platform-floor bundle | 403; the floor is not theirs to lower |
 
@@ -215,6 +234,11 @@ that bundle's attacks look like.
   corpus-backed classification actually outperforms cold classification. That
   premise is the whole reason for the design; if it does not hold, the corpus
   layer needs rethinking before it ships.
+- **Model-substitution invariance** — the same bundle set run against two
+  different guard models produces verdicts in the same shape, and each response
+  correctly names the guard that ran. This is the test that proves the decoupling
+  holds in practice rather than only on paper: if a bundle silently depends on a
+  particular model's quirks, swapping the guard is where it surfaces.
 
 ## Relationship to model inventory
 
