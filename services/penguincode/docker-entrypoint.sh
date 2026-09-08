@@ -21,12 +21,12 @@ ollama:
 # Model Configuration
 models:
   planning: "${PENGUINCODE_MODEL_PLANNING:-deepseek-coder:6.7b}"
-  orchestration: "${PENGUINCODE_MODEL_ORCHESTRATION:-gemma4:12b}"
+  orchestration: "${PENGUINCODE_MODEL_ORCHESTRATION:-gemma4:12b-it-qat}"
   research: "${PENGUINCODE_MODEL_RESEARCH:-gemma4:e4b}"
   execution: "${PENGUINCODE_MODEL_EXECUTION:-qwen2.5-coder:7b}"
   execution_lite: "${PENGUINCODE_MODEL_EXECUTION_LITE:-qwen2.5-coder:7b}"
-  exploration: "${PENGUINCODE_MODEL_EXPLORATION:-gemma4:12b}"
-  exploration_lite: "${PENGUINCODE_MODEL_EXPLORATION_LITE:-gemma4:12b}"
+  exploration: "${PENGUINCODE_MODEL_EXPLORATION:-gemma4:12b-it-qat}"
+  exploration_lite: "${PENGUINCODE_MODEL_EXPLORATION_LITE:-gemma4:12b-it-qat}"
 
 # Per-Agent Model Overrides
 agents:
@@ -34,7 +34,7 @@ agents:
     model: "${PENGUINCODE_AGENT_EXECUTOR:-qwen2.5-coder:7b}"
     description: "Code mutations, file writes, bash execution"
   explorer:
-    model: "${PENGUINCODE_AGENT_EXPLORER:-gemma4:12b}"
+    model: "${PENGUINCODE_AGENT_EXPLORER:-gemma4:12b-it-qat}"
     description: "Codebase navigation, file reading, search"
   reviewer:
     model: "${PENGUINCODE_AGENT_REVIEWER:-codellama:7b}"

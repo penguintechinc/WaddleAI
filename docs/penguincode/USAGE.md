@@ -73,7 +73,7 @@ penguincode setup
 This command:
 1. Creates config directories at `~/.config/penguincode/`
 2. Checks Ollama connectivity
-3. Pulls default models (gemma4:12b, gemma4:e4b, qwen2.5-coder:7b, nomic-embed-text)
+3. Pulls default models (gemma4:12b-it-qat, gemma4:e4b, qwen2.5-coder:7b, nomic-embed-text)
 4. Creates `.penguincode/` directory in your project
 
 **Options:**
@@ -89,13 +89,13 @@ penguincode setup --ollama-url http://remote:11434  # Custom Ollama URL
 
 ```bash
 # Required models
-ollama pull gemma4:12b          # Coding roles: orchestration, exploration (~8GB)
+ollama pull gemma4:12b-it-qat          # Coding roles: orchestration, exploration (~8GB)
 ollama pull gemma4:e4b          # Research and other non-code roles (~4GB)
 ollama pull qwen2.5-coder:7b     # Code execution (4.7GB)
 ollama pull nomic-embed-text     # Required for docs RAG (274MB)
 
 # Optional additional models
-ollama pull gemma4:12b           # Recommended for complex ops like coding
+ollama pull gemma4:12b-it-qat           # Recommended for complex ops like coding
 ollama pull deepseek-coder:6.7b  # Planning, debugging (3.8GB)
 ollama pull codellama:7b         # Code review (3.8GB)
 ollama pull mistral:7b           # Documentation (4.1GB)
@@ -105,7 +105,7 @@ ollama pull mistral:7b           # Documentation (4.1GB)
 
 **Model selection by task**:
 - **Chat/Research**: gemma4:e4b (fast, general purpose)
-- **Coding roles**: gemma4:12b (orchestration, exploration -- e4b tested poorly at coding)
+- **Coding roles**: gemma4:12b-it-qat (orchestration, exploration -- e4b tested poorly at coding)
 - **Code Generation**: qwen2.5-coder:7b (best code quality)
 - **Planning**: deepseek-coder:6.7b (best architecture)
 - **Review**: codellama:7b (code analysis)
@@ -150,12 +150,12 @@ Assign different models for different tasks:
 ```yaml
 models:
   planning: "deepseek-coder:6.7b"      # Complex planning tasks
-  orchestration: "gemma4:12b"         # Task coordination
+  orchestration: "gemma4:12b-it-qat"         # Task coordination
   research: "gemma4:e4b"              # Web research
   execution: "qwen2.5-coder:7b"        # Code generation (complex)
   execution_lite: "qwen2.5-coder:1.5b" # Code generation (simple)
-  exploration: "gemma4:12b"           # Code exploration
-  exploration_lite: "gemma4:12b"      # Fast file reads
+  exploration: "gemma4:12b-it-qat"           # Code exploration
+  exploration_lite: "gemma4:12b-it-qat"      # Fast file reads
 ```
 
 ### Agent Configuration
@@ -168,7 +168,7 @@ agents:
     model: "qwen2.5-coder:7b"
     description: "Code mutations, file writes, bash execution"
   explorer:
-    model: "gemma4:12b"
+    model: "gemma4:12b-it-qat"
     description: "Codebase navigation, file reading"
   reviewer:
     model: "codellama:7b"
@@ -427,7 +427,7 @@ regulators:
 1. **Use lite models for simple tasks**:
    ```yaml
    execution_lite: "qwen2.5-coder:1.5b"  # Instead of 7b
-   exploration_lite: "gemma4:12b"
+   exploration_lite: "gemma4:12b-it-qat"
    ```
 
 2. **Reduce context window**:
@@ -713,8 +713,8 @@ PenguinCode uses a ChatAgent orchestrator that delegates to specialized agents.
 
 | Agent | Model | Purpose | When to Use |
 |-------|-------|---------|-------------|
-| **ChatAgent** | gemma4:12b | Orchestration, knowledge base | Always (main interface) |
-| **Explorer** | gemma4:12b | Search, analyze code | Understanding codebase |
+| **ChatAgent** | gemma4:12b-it-qat | Orchestration, knowledge base | Always (main interface) |
+| **Explorer** | gemma4:12b-it-qat | Search, analyze code | Understanding codebase |
 | **Executor** | qwen2.5-coder:7b | Write/modify code | Implementing features |
 | **Planner** | deepseek-coder:6.7b | Break down complex tasks | Multi-step implementations |
 
@@ -724,18 +724,18 @@ Agents automatically select lite or full models based on task complexity:
 
 | Complexity | Explorer | Executor |
 |------------|----------|----------|
-| Simple | gemma4:12b | qwen2.5-coder:1.5b |
-| Moderate/Complex | gemma4:12b | qwen2.5-coder:7b |
+| Simple | gemma4:12b-it-qat | qwen2.5-coder:1.5b |
+| Moderate/Complex | gemma4:12b-it-qat | qwen2.5-coder:7b |
 
-`gemma4:12b` is the default for the coding tiers (orchestration, exploration); `gemma4:e4b` stays the default for research and other non-code roles. `12b` needs ~8GB VRAM.
+`gemma4:12b-it-qat` is the default for the coding tiers (orchestration, exploration); `gemma4:e4b` stays the default for research and other non-code roles. `12b` needs ~8GB VRAM.
 
 ### Agent Configuration
 
 ```yaml
 models:
-  orchestration: "gemma4:12b"
-  exploration: "gemma4:12b"
-  exploration_lite: "gemma4:12b"
+  orchestration: "gemma4:12b-it-qat"
+  exploration: "gemma4:12b-it-qat"
+  exploration_lite: "gemma4:12b-it-qat"
   execution: "qwen2.5-coder:7b"
   execution_lite: "qwen2.5-coder:1.5b"
   planning: "deepseek-coder:6.7b"
@@ -822,7 +822,7 @@ defaults:
 ollama list
 
 # Pull the model
-ollama pull gemma4:12b   # coding roles
+ollama pull gemma4:12b-it-qat   # coding roles
 ollama pull gemma4:e4b   # research and other non-code roles
 
 # Or run setup

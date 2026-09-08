@@ -52,7 +52,7 @@ class TestProvisionBasic:
         data = await resp.get_json()
         model_names = {m["name"] for m in data["ollama"]["models"]}
         assert "codellama:7b" in model_names
-        assert "gemma4:12b" in model_names  # foreman -- coding role
+        assert "gemma4:12b-it-qat" in model_names  # foreman -- coding role
         assert "gemma4:e4b" in model_names  # tester -- non-coding role
         assert "nomic-embed-text" in model_names
 

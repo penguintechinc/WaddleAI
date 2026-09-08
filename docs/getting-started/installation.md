@@ -11,6 +11,134 @@ WaddleAI has three deployable services — **proxy** (OpenAI-compatible data pla
 - `kubectl` + Helm v4, and a local cluster (MicroK8s on Linux, Docker Desktop Kubernetes on macOS/Windows) if you want the full stack running in Kubernetes
 - `git`, `uv` (for `make venv`)
 
+## GPU requirements (local model serving)
+
+Only needed if you serve models locally via Ollama. A deployment that routes
+exclusively to commercial providers needs no GPU at all.
+
+### The e4b-only baseline
+
+The minimum viable local set is three models — the routing classifier, the
+always-on security auditor, and the embedding model:
+
+| Model | Role | VRAM |
+|---|---|---|
+| `gemma4:e4b` | routing classifier, summarize, docs-fetch | 3.26 GB |
+| `shieldgemma:2b` | security auditor (always on) | 2.14 GB |
+| `nomic-embed-text` | embeddings | 0.32 GB |
+| **Total** | | **5.72 GB** |
+
+Measured with all three resident simultaneously on a live host, Q4_K_M
+quantization. These are **base weights at idle** — the KV cache grows on top of
+them as context length and concurrency increase, and that growth is what
+actually determines whether a card holds up.
+
+### Minimum and recommended
+
+| | VRAM | Example cards | Reality |
+|---|---|---|---|
+| **Minimum** | 8 GB | RTX 4060, RTX 5060 | Works. ~2.3 GB left for KV cache after the base set — enough for short contexts and low concurrency, tight for anything else |
+| **Recommended** | 12 GB+ | RTX 3060 12GB, RTX 4070 | Comfortable headroom for long contexts, concurrent requests, and `gemma4:12b` for coding roles |
+
+8 GB is a real floor, not a comfortable one. Pushing an 8 GB card to its limit
+with an LLM plus two embedding-class models leaves very little room for the KV
+cache to expand during long sessions or high-throughput retrieval. Budget for a
+display buffer too if the card is also driving a monitor.
+
+### Adding gemma4:12b for coding
+
+`gemma4:12b` is the default for coding roles (orchestration, exploration) and
+costs **8.42 GB** once it has context — more than the entire e4b-only set.
+
+**The binding constraint is a config default, not VRAM.** Ollama's
+`OLLAMA_MAX_LOADED_MODELS` defaults to **3**. WaddleAI's full local set is
+**four** models — `gemma4:e4b`, `gemma4:12b`, `shieldgemma:2b`,
+`nomic-embed-text` — so one is always evicted no matter how much VRAM the card
+has. Measured on a 16 GB host:
+
+| Models requested | Resident | Total VRAM |
+|---|---|---|
+| `e4b`, `shieldgemma`, `nomic` | 3 | 5.72 GB |
+| `12b`, `shieldgemma`, `nomic` | 3 | 10.89 GB |
+| `e4b`, `12b`, `shieldgemma` | 3 | **13.49 GB** |
+| all four | **3** — one evicted | 5.72 GB |
+
+The third row is the proof: 13.49 GB stays resident without complaint, so
+memory is not what is stopping the fourth model. Buying a larger card does not
+fix this.
+
+```bash
+# on the Ollama host
+OLLAMA_MAX_LOADED_MODELS=4   # or higher, if you serve more models
+```
+
+**Why it matters.** `gemma4:e4b` is the routing classifier, so it runs on every
+request that reaches stage 2; `gemma4:12b` serves coding requests. If the cap
+evicts one of them, a coding workload alternates between the two and each
+alternation is an evict-and-reload. Nothing errors — throughput simply
+collapses, and the cause is invisible unless you check `/api/ps`:
+
+```bash
+curl -s http://<host>:11434/api/ps | python3 -m json.tool | grep -E '"name"|size_vram'
+```
+
+Fewer models listed than you serve means the cap is evicting, and raising
+`OLLAMA_MAX_LOADED_MODELS` — not more VRAM — is the fix.
+
+**VRAM still matters, separately.** Once the cap is raised, all four must
+actually fit: 5.72 GB (baseline) + 8.42 GB (`12b` with context) ≈ **14.2 GB of
+weights**, plus KV headroom.
+
+Serving all four concurrently is an **xx80/xx90-class** requirement — an RTX
+4080, 3090, 4090, or a 16 GB mobile xx80. Mid-range cards can serve the
+e4b-only baseline comfortably; they cannot hold a 12B alongside it with room
+for context to grow.
+
+| Serving | VRAM | Example cards | Notes |
+|---|---|---|---|
+| e4b only | 8 GB min / 12 GB rec | RTX 4060 / RTX 3060 12GB | See table above |
+| **e4b + 12b** | **16 GB** | RTX 4080, RTX 3090, mobile RTX 3080 16GB | Verified: 13.49 GB co-resident. Requires Q4 and managed context |
+| e4b + 12b, comfortable | **24 GB** | RTX 3090 / 4090 | Room for Q8 or unquantized 12B and 8K+ contexts |
+
+Quantization is what makes this fit. At Ollama's default **Q4_K_M** the 12B
+model is ~7.5–8.5 GB; at Q8 it is ~13–14 GB and at BF16 ~24–27 GB. A stack that
+fits comfortably at Q4 will OOM at Q8 on the same card — or worse, Ollama
+silently offloads layers to system RAM and generation speed collapses without an
+error.
+
+An 8 GB card cannot host `12b` alongside the baseline at all. It will OOM
+immediately or fall back to CPU/RAM offloading.
+
+#### Squeezing 12b onto a tight card: the QAT tag
+
+`gemma4:12b-it-qat` is the **default** for coding roles. QAT quantizes during
+training rather than after, so it preserves more reasoning quality than
+post-training quantization at a comparable — slightly smaller — footprint.
+
+**The measurements on this page were taken against the standard `gemma4:12b`**
+(8.09 GB idle, 8.42 GB with context, 13.49 GB co-resident with `e4b` and
+`shieldgemma`). The QAT variant is reported to run a few hundred MB smaller;
+that has not been measured here, so size from the standard figures and treat
+any saving as a bonus rather than budgeted headroom.
+
+Whichever 12B tag is loaded, verify the models you serve are all actually
+resident:
+
+```bash
+curl -s http://<host>:11434/api/ps | python3 -m json.tool | grep -E '"name"|size_vram'
+```
+
+Fewer models listed than you serve means something is being evicted — check
+`OLLAMA_MAX_LOADED_MODELS` first, VRAM second.
+
+### A note on model sizes
+
+Do not size from the download. `gemma4:e4b` is **9.61 GB on disk but 3.26 GB
+resident**, because its MatFormer packaging ships more weights than the
+effective-4B submodel actually loads. By contrast `gemma4:12b` is 7.56 GB on
+disk and 8.09 GB resident. The disk figure alone would tell you e4b is the more
+expensive model, which is backwards.
+
 ## Option A: Kubernetes with Helm (recommended)
 
 The Helm chart at `k8s/helm/waddleai` is the only supported deployment path for every environment (alpha, beta, production). Full walkthrough, values-file reference, and ingress/TLS setup: [Kubernetes Deployment](../deployment/kubernetes.md).

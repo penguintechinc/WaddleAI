@@ -28,7 +28,7 @@ def sample_config():
             ],
         },
         "agents": {
-            "foreman": {"model": "ollama/gemma4:12b", "mode": "primary"},
+            "foreman": {"model": "ollama/gemma4:12b-it-qat", "mode": "primary"},
             "executor": {"model": "ollama/codellama:7b", "mode": "subagent"},
         },
         "mcp_servers": [
