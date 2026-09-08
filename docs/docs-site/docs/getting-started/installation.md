@@ -84,6 +84,30 @@ an error.
 An 8 GB card cannot host `12b` alongside the baseline at all. It will OOM
 immediately or fall back to CPU/RAM offloading.
 
+#### Squeezing 12b onto a tight card: the QAT tag
+
+`gemma4:12b-it-qat` is a quantization-aware-trained variant (the tag exists in
+Ollama's published list). QAT quantizes during training rather than after, so it
+tends to preserve more reasoning quality than post-training quantization at a
+comparable footprint, and it is reported to run a few hundred MB smaller than
+the standard `gemma4:12b` Q4_K_M.
+
+Treat the saving as worth testing, not as a given. **Measured here,
+`gemma4:12b` is 8.09 GB idle and 8.42 GB with context** — higher than the
+~7.6 GB commonly cited for Q4_K_M, so published deltas may not transfer to this
+deployment.
+
+The only question worth measuring is whether the QAT variant leaves
+`gemma4:e4b` resident alongside it. If it does, the thrashing above disappears;
+if it does not, a few hundred MB changed nothing that matters. Check with:
+
+```bash
+curl -s http://<host>:11434/api/ps | python3 -m json.tool | grep -E '"name"|size_vram'
+```
+
+If `gemma4:e4b` is missing from that output after a coding request, the stack is
+still thrashing regardless of which 12B tag is loaded.
+
 ### A note on model sizes
 
 Do not size from the download. `gemma4:e4b` is **9.61 GB on disk but 3.26 GB
