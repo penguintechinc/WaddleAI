@@ -1,7 +1,31 @@
 # Tool-Type Vocabulary — Design
 
 **Date:** 2026-09-08
-**Status:** Design approved, not yet planned or implemented
+**Status:** Design approved, **amended 2026-09-08** — see the note below
+**Amended by:** `2026-09-08-model-inventory-and-weighted-selection-design.md`
+
+> **Amendment.** This document argues for a closed, kebab-case vocabulary
+> because `tool_type` was an exact-match join key against `model_assignments`.
+> The weighted-selection design supersedes that for REQUEST ROUTING: the router
+> now receives `tool_type` and per-model capability weights as *context* and
+> chooses itself, so `tool_type` is no longer a join key there and an
+> out-of-vocabulary tag is no longer a routing failure.
+>
+> What still stands:
+> - **kebab-case as the standard** — unchanged, it is a naming convention
+> - **the closed vocabulary for the EXPLICIT internal-function roles**
+>   (`security-audit`, `embeddings`, `summarize`, `docs-fetch`) — those remain
+>   exact-match lookups and still need it
+> - the vocabulary's value for consistency, observability and grouping traces
+>
+> What relaxes:
+> - the closed vocabulary becomes a **preference, not a requirement**, for
+>   request traffic
+> - out-of-vocabulary handling drops in urgency, since a router reading
+>   `code_refactoring` understands it perfectly well
+>
+> Read the sections below with that scope in mind: they describe the explicit
+> roles correctly and overstate the requirement for request routing.
 **Related, deliberately independent:** classifier bundles
 (`2026-09-08-classifier-bundles-design.md`), model inventory (not yet written)
 
