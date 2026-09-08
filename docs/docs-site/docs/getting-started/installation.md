@@ -142,13 +142,15 @@ aggregate throughput *falls* to 1.34×, so the third request does not merely wai
 its turn, it makes the other two slower than the work it contributes. Beyond the
 ceiling you lose latency and throughput together.
 
-**Rule of thumb — concurrently generating LLMs per GPU:**
+**Rule of thumb — the MAXIMUM number of LLMs that should be generating at once
+on one GPU.** These are ceilings, not targets: staying under them is fine, and
+exceeding them costs aggregate throughput, not just per-request latency.
 
-| GPU class | Concurrent LLMs |
+| GPU class | At most |
 |---|---|
-| xx70 and below | 1 |
-| xx80 | 2 |
-| xx90 | 3 |
+| xx70 and below | 1 generating |
+| xx80 | 2 generating |
+| xx90 | 3 generating |
 
 The xx80 row is measured (above). The xx70 and xx90 rows follow the tier
 pattern and have not been measured here — treat them as starting points and
