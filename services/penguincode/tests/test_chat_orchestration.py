@@ -29,12 +29,12 @@ class MockSettings:
 
     @dataclass
     class Models:
-        orchestration: str = "llama3.2:3b"
+        orchestration: str = "gemma4:e4b"
         execution: str = "qwen2.5-coder:7b"
         planning: str = "deepseek-coder:6.7b"
-        research: str = "llama3.2:3b"
-        exploration: str = "llama3.2:3b"
-        exploration_lite: str = "llama3.2:1b"
+        research: str = "gemma4:e4b"
+        exploration: str = "gemma4:e4b"
+        exploration_lite: str = "gemma4:e4b"
         execution_lite: str = "qwen2.5-coder:1.5b"
 
     @dataclass

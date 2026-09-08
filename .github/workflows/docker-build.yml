@@ -276,6 +276,64 @@ jobs:
         flags: unittests
         name: codecov-umbrella
 
+  # Python lint and typing ran only in the local pre-commit hook and `make
+  # lint`, never in CI. mypy-baseline.txt drifted to 212 unrecorded errors
+  # behind that gap before anyone looked -- the same failure mode that rotted
+  # the webui suites below. This job closes it: ruff and the mypy ratchet now
+  # block the PR, so the baseline can only shrink.
+  lint:
+    name: Python lint and typing
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Set up Python 3.13
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+      with:
+        python-version: '3.13'
+
+    - name: Cache pip dependencies
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-lint-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-lint-
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        # The full runtime requirements, not just the linters: mypy resolves
+        # real imports, so a thin install would silently degrade every
+        # third-party type to Any and the gate would pass on nothing.
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r services/management/requirements.txt
+        pip install pytest pytest-asyncio
+        # Pinned to the same ruff the pre-commit hook uses
+        # (.pre-commit-config.yaml rev v0.16.2) -- a skew between the two
+        # means the hook and CI enforce different rule sets and neither can
+        # be satisfied at once. mypy comes pinned from requirements.txt.
+        pip install 'ruff==0.16.2'
+
+    - name: ruff check
+      run: ruff check proxy services shared scripts tests
+
+    - name: ruff format
+      run: ruff format --check proxy services shared scripts tests
+
+    - name: mypy ratchet gate
+      # Fails on any type error not already recorded in mypy-baseline.txt.
+      # The script asserts a non-zero checked-file count itself, so a broken
+      # module path fails loudly instead of reporting a clean run.
+      run: PY=python3 bash scripts/mypy-gate.sh
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+
   # services/webui was only ever docker-built, so its JS lint and test suites
   # never ran anywhere. They rotted unnoticed to 19 lint errors and 17 failing
   # tests before anyone looked. This job exists so that cannot recur.
@@ -517,7 +575,7 @@ jobs:
         PYTHONPATH: ${{ github.workspace }}
 
   build-platform:
-    needs: [determine-tier, test, test-webui, openapi-lint, test-contract, test-integration, test-e2e]
+    needs: [determine-tier, test, lint, test-webui, openapi-lint, test-contract, test-integration, test-e2e]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -751,7 +809,7 @@ jobs:
   # here is a hard block (exit-code 1), unlike the SARIF-only, non-blocking
   # security-scan job below — Task 13 explicitly calls for a blocking gate.
   build-ollama-image:
-    needs: [determine-tier, test]
+    needs: [determine-tier, test, lint]
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -26,6 +26,7 @@ import os
 from datetime import datetime
 from typing import Any
 
+from penguin_dal.db import DB
 from quart import g, jsonify, request
 
 from shared.auth.rbac import Permission
@@ -39,6 +40,20 @@ from . import api_v1_bp
 from .auth import require_auth, require_scope
 
 logger = logging.getLogger(__name__)
+
+
+def _db() -> DB:
+    """Return the process-wide penguin-dal handle, narrowed away from ``None``.
+
+    ``extensions.db`` is declared ``DB | None`` because it starts unset
+    before ``init_db()`` runs at startup; every route below only executes
+    after that point, so this narrows the type for mypy without adding any
+    reachable failure mode.
+    """
+    if db is None:
+        raise RuntimeError("database not initialized")
+    return db
+
 
 FLEET_V2_FLAG = "waddleai.fleet_v2"
 _HYBRID_TARGETS_FEATURE = "hybrid_targets"
@@ -129,7 +144,8 @@ def _validation_error(detail: str) -> tuple[Any, int]:
 
 def _get_org_scoped_backend(backend_id: int, org_id: int) -> tuple[Any, str]:
     """Return a ``fleet_backends`` row, distinguishing "not found" from "wrong org"."""
-    row = db(db.fleet_backends.id == backend_id).select().first()
+    database = _db()
+    row = database(database.fleet_backends.id == backend_id).select().first()
     if row is None:
         return None, "not_found"
     if row.org_id != org_id:

@@ -71,7 +71,8 @@ jobs:
           - **Python**: 3.12+ (for CLI)
           - **Node.js**: 18+ (for extension development)
           - **Recommended Models**:
-            - `llama3.2:3b` - Research and orchestration
+            - `gemma4:e4b` - Default for research and orchestration
+            - `gemma4:12b` - Recommended for complex ops like coding
             - `qwen2.5-coder:7b` - Code execution
             - `deepseek-coder:6.7b` - Planning and debugging
             - `nomic-embed-text` - Embeddings for memory

@@ -137,6 +137,24 @@ test-e2e:
 test-functional:
 	@echo "No functional tests defined"
 
+# GPU tier: the `gpu`-marked tests that talk to a REAL Ollama-served model
+# instead of a stub. Deselected from every other target by pytest.ini's marker
+# convention, so they only ever run when asked for explicitly here.
+#
+# Pointed at the MINIMUM supported models on purpose, not the recommended ones
+# -- gemma4:e4b for the routing classifier and shieldgemma:2b for the security
+# auditor. If the floor works, everything above it does; testing only the
+# recommendation would let the floor rot unnoticed.
+#
+# Against a remote box (the daemon there needs OLLAMA_HOST=0.0.0.0:11434 to
+# accept non-local connections):
+#   make test-gpu OLLAMA_HOST=http://gaming-laptop.local:11434
+OLLAMA_HOST ?= http://localhost:11434
+test-gpu: ## Run the real-model (GPU) test tier. Needs Ollama + gemma4:e4b + shieldgemma:2b.
+	@echo "Running GPU-tier tests against $(OLLAMA_HOST)..."
+	@WADDLEAI_GPU_TESTS=1 OLLAMA_HOST=$(OLLAMA_HOST) \
+	  $(PY) -m pytest tests -m gpu -v --no-cov
+
 test-contract:
 	@echo "Running contract snapshot tests..."
 	$(PY) -m pytest tests/contract -v --no-cov

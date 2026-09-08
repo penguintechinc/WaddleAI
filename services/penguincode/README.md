@@ -56,8 +56,11 @@
 curl -fsSL https://ollama.ai/install.sh | sh
 
 # Pull required models
-ollama pull llama3.2:latest
+ollama pull gemma4:e4b          # default for orchestration/exploration/research
 ollama pull nomic-embed-text
+
+# Optional: recommended for complex ops like coding, if your host has ~8GB VRAM
+ollama pull gemma4:12b
 ```
 
 ### Option 1: PenguinCode Native Client (`penguincode chat`)

@@ -15,7 +15,7 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 
 def _sentence_transformer(model_name: str):
@@ -39,6 +39,7 @@ def _sentence_transformer(model_name: str):
 
 # Supabase import (optional)
 try:
+    from postgrest import CountMethod
     from supabase import Client, create_client
 
     HAS_SUPABASE = True
@@ -49,6 +50,7 @@ except ImportError:
 try:
     from qdrant_client import QdrantClient
     from qdrant_client.models import (
+        Condition,
         Distance,
         FieldCondition,
         Filter,
@@ -165,6 +167,18 @@ class SupabaseVectorStore(RAGStore):
             logger.error(f"Failed to initialize Supabase: {e}")
             raise
 
+    async def _ensure_client(self) -> Client:
+        """Return the Supabase client, initializing it on first use.
+
+        Centralizes the None-narrowing so callers get a concrete `Client`
+        instead of the `Client | None` attribute type mypy sees on `self.client`.
+        """
+        if self.client is None:
+            await self.initialize()
+        if self.client is None:
+            raise RuntimeError("Supabase client failed to initialize")
+        return self.client
+
     def _generate_embedding(self, text: str) -> list[float] | None:
         """Generate embedding for text."""
         if not self.encoder:
@@ -180,10 +194,9 @@ class SupabaseVectorStore(RAGStore):
     async def add_documents(self, documents: list[Document], collection: str = "default") -> bool:
         """Add documents to Supabase."""
         try:
-            if not self.client:
-                await self.initialize()
+            client = await self._ensure_client()
 
-            records = []
+            records: list[dict[str, Any]] = []
             for doc in documents:
                 # Generate embedding if not provided
                 if doc.embedding is None:
@@ -205,7 +218,7 @@ class SupabaseVectorStore(RAGStore):
 
             # Insert into Supabase
             if records:
-                self.client.table(self.table_name).insert(records).execute()
+                client.table(self.table_name).insert(records).execute()
                 logger.info(f"Added {len(records)} documents to Supabase collection '{collection}'")
 
             return True
@@ -224,8 +237,7 @@ class SupabaseVectorStore(RAGStore):
     ) -> list[SearchResult]:
         """Search in Supabase using pgvector."""
         try:
-            if not self.client:
-                await self.initialize()
+            client = await self._ensure_client()
 
             # Generate query embedding
             query_embedding = self._generate_embedding(query)
@@ -234,7 +246,7 @@ class SupabaseVectorStore(RAGStore):
 
             # Build RPC call for vector similarity search
             # Note: Requires pgvector extension and similarity function
-            response = self.client.rpc(
+            response = client.rpc(
                 "match_documents",
                 {
                     "query_embedding": query_embedding,
@@ -244,9 +256,22 @@ class SupabaseVectorStore(RAGStore):
                 },
             ).execute()
 
+            # postgrest-py types RPC response.data as the recursive `JSON`
+            # alias (None | bool | str | int | float | Sequence[JSON] |
+            # Mapping[str, JSON]) rather than the concrete "list of row
+            # dicts" shape match_documents actually returns; narrow it
+            # explicitly instead of trusting the stub.
+            raw_rows = response.data
+            if not isinstance(raw_rows, list):
+                logger.warning("Unexpected response shape from match_documents RPC")
+                return []
+
             # Convert to SearchResult objects
             results = []
-            for item in response.data:
+            for raw_row in raw_rows:
+                if not isinstance(raw_row, dict):
+                    continue
+                item = cast(dict[str, Any], raw_row)  # see JSON-alias note above
                 doc = Document(
                     id=item["id"],
                     content=item["content"],
@@ -267,10 +292,9 @@ class SupabaseVectorStore(RAGStore):
     async def delete_document(self, document_id: str, collection: str = "default") -> bool:
         """Delete document from Supabase."""
         try:
-            if not self.client:
-                await self.initialize()
+            client = await self._ensure_client()
 
-            self.client.table(self.table_name).delete().eq("id", document_id).eq(
+            client.table(self.table_name).delete().eq("id", document_id).eq(
                 "collection", collection
             ).execute()
             return True
@@ -282,10 +306,9 @@ class SupabaseVectorStore(RAGStore):
     async def delete_collection(self, collection: str) -> bool:
         """Delete collection from Supabase."""
         try:
-            if not self.client:
-                await self.initialize()
+            client = await self._ensure_client()
 
-            self.client.table(self.table_name).delete().eq("collection", collection).execute()
+            client.table(self.table_name).delete().eq("collection", collection).execute()
             return True
 
         except Exception as e:
@@ -295,12 +318,17 @@ class SupabaseVectorStore(RAGStore):
     async def list_collections(self) -> list[str]:
         """List all collections in Supabase."""
         try:
-            if not self.client:
-                await self.initialize()
+            client = await self._ensure_client()
 
-            response = self.client.table(self.table_name).select("collection").execute()
-            collections = list(set([row["collection"] for row in response.data]))
-            return collections
+            response = client.table(self.table_name).select("collection").execute()
+            raw_rows = response.data
+            collection_names: set[str] = set()
+            for raw_row in raw_rows if isinstance(raw_rows, list) else []:
+                if not isinstance(raw_row, dict):
+                    continue
+                row = cast(dict[str, Any], raw_row)  # see JSON-alias note in search()
+                collection_names.add(row["collection"])
+            return list(collection_names)
 
         except Exception as e:
             logger.error(f"Failed to list collections: {e}")
@@ -309,12 +337,11 @@ class SupabaseVectorStore(RAGStore):
     async def get_collection_stats(self, collection: str) -> dict[str, Any]:
         """Get statistics for a collection."""
         try:
-            if not self.client:
-                await self.initialize()
+            client = await self._ensure_client()
 
             response = (
-                self.client.table(self.table_name)
-                .select("*", count="exact")
+                client.table(self.table_name)
+                .select("*", count=CountMethod.exact)
                 .eq("collection", collection)
                 .execute()
             )
@@ -377,6 +404,19 @@ class QdrantRAGStore(RAGStore):
             logger.error(f"Failed to initialize Qdrant: {e}")
             raise
 
+    async def _ensure_client(self) -> QdrantClient:
+        """Return the Qdrant client, initializing it on first use.
+
+        Centralizes the None-narrowing so callers get a concrete
+        `QdrantClient` instead of the `QdrantClient | None` attribute type
+        mypy sees on `self.client`.
+        """
+        if self.client is None:
+            await self.initialize()
+        if self.client is None:
+            raise RuntimeError("Qdrant client failed to initialize")
+        return self.client
+
     def _generate_embedding(self, text: str) -> list[float] | None:
         """Generate embedding for text."""
         if not self.encoder:
@@ -392,11 +432,12 @@ class QdrantRAGStore(RAGStore):
     async def _ensure_collection_exists(self, collection: str):
         """Ensure collection exists in Qdrant."""
         try:
-            collections = self.client.get_collections().collections
+            client = await self._ensure_client()
+            collections = client.get_collections().collections
             collection_names = [c.name for c in collections]
 
             if collection not in collection_names:
-                self.client.create_collection(
+                client.create_collection(
                     collection_name=collection,
                     vectors_config=VectorParams(size=self.vector_size, distance=Distance.COSINE),
                 )
@@ -409,8 +450,7 @@ class QdrantRAGStore(RAGStore):
     async def add_documents(self, documents: list[Document], collection: str = "default") -> bool:
         """Add documents to Qdrant."""
         try:
-            if not self.client:
-                await self.initialize()
+            client = await self._ensure_client()
 
             await self._ensure_collection_exists(collection)
 
@@ -441,7 +481,7 @@ class QdrantRAGStore(RAGStore):
 
             # Upsert points
             if points:
-                self.client.upsert(collection_name=collection, points=points)
+                client.upsert(collection_name=collection, points=points)
                 logger.info(f"Added {len(points)} documents to Qdrant collection '{collection}'")
 
             return True
@@ -460,8 +500,7 @@ class QdrantRAGStore(RAGStore):
     ) -> list[SearchResult]:
         """Search in Qdrant."""
         try:
-            if not self.client:
-                await self.initialize()
+            client = await self._ensure_client()
 
             # Generate query embedding
             query_embedding = self._generate_embedding(query)
@@ -471,7 +510,7 @@ class QdrantRAGStore(RAGStore):
             # Build filter if provided
             query_filter = None
             if filters:
-                conditions = []
+                conditions: list[Condition] = []
                 for key, value in filters.items():
                     conditions.append(
                         FieldCondition(key=f"metadata.{key}", match=MatchValue(value=value))
@@ -479,8 +518,14 @@ class QdrantRAGStore(RAGStore):
                 if conditions:
                     query_filter = Filter(must=conditions)
 
-            # Search
-            search_results = self.client.search(
+            # qdrant-client 1.19.0 (pinned, requirements.txt) removed
+            # QdrantClient.search() in favor of query_points(); this call
+            # already raises AttributeError at runtime with the pinned
+            # version and is caught by the except below (this backend is
+            # unused elsewhere in the codebase). Preserving the existing
+            # call/behavior as-is per this pass's no-behavior-change scope;
+            # a follow-up should migrate to query_points().
+            search_results = cast(Any, client).search(
                 collection_name=collection,
                 query_vector=query_embedding,
                 limit=limit,
@@ -511,11 +556,10 @@ class QdrantRAGStore(RAGStore):
     async def delete_document(self, document_id: str, collection: str = "default") -> bool:
         """Delete document from Qdrant."""
         try:
-            if not self.client:
-                await self.initialize()
+            client = await self._ensure_client()
 
             # Delete by payload filter
-            self.client.delete(
+            client.delete(
                 collection_name=collection,
                 points_selector=Filter(
                     must=[FieldCondition(key="doc_id", match=MatchValue(value=document_id))]
@@ -530,10 +574,9 @@ class QdrantRAGStore(RAGStore):
     async def delete_collection(self, collection: str) -> bool:
         """Delete collection from Qdrant."""
         try:
-            if not self.client:
-                await self.initialize()
+            client = await self._ensure_client()
 
-            self.client.delete_collection(collection_name=collection)
+            client.delete_collection(collection_name=collection)
             return True
 
         except Exception as e:
@@ -543,10 +586,9 @@ class QdrantRAGStore(RAGStore):
     async def list_collections(self) -> list[str]:
         """List all collections in Qdrant."""
         try:
-            if not self.client:
-                await self.initialize()
+            client = await self._ensure_client()
 
-            collections = self.client.get_collections().collections
+            collections = client.get_collections().collections
             return [c.name for c in collections]
 
         except Exception as e:
@@ -556,15 +598,25 @@ class QdrantRAGStore(RAGStore):
     async def get_collection_stats(self, collection: str) -> dict[str, Any]:
         """Get statistics for a collection."""
         try:
-            if not self.client:
-                await self.initialize()
+            client = await self._ensure_client()
 
-            info = self.client.get_collection(collection_name=collection)
+            info = client.get_collection(collection_name=collection)
+
+            # Named-vector collections report a dict of VectorParams per
+            # vector name; this backend only ever creates single, unnamed
+            # vectors (see _ensure_collection_exists), so fall back to the
+            # configured vector_size for any other shape rather than crash.
+            vectors_config = info.config.params.vectors
+            vector_size = (
+                vectors_config.size
+                if isinstance(vectors_config, VectorParams)
+                else self.vector_size
+            )
 
             return {
                 "collection": collection,
                 "document_count": info.points_count,
-                "vector_size": info.config.params.vectors.size,
+                "vector_size": vector_size,
                 "backend": "qdrant",
             }
 
@@ -722,6 +774,7 @@ def create_rag_manager(
     """
     # Legacy callers may pass db as the first positional arg via write_db
     db = write_db
+    rag_store: RAGStore
 
     if backend == "pgvector":
         # Lazy import to avoid circular imports
@@ -852,12 +905,19 @@ class PgvectorRAGStore(RAGStore):
         self,
         query: str,
         collection: str = "default",
-        organization_id: int = 0,
         limit: int = 5,
         min_score: float = 0.7,
         filters: dict[str, Any] | None = None,
+        organization_id: int = 0,
     ) -> list[SearchResult]:
-        """Vector similarity search routed to a read replica for scalability."""
+        """Vector similarity search routed to a read replica for scalability.
+
+        `organization_id` is appended after the abstract `RAGStore.search`
+        parameters (rather than inserted before `limit`, its previous
+        position) so this override keeps the same positional signature as
+        the base class -- see mypy [override]. All current call sites pass
+        it by keyword, so this is not a behavior change.
+        """
         try:
             loop = asyncio.get_event_loop()
             embedding = await loop.run_in_executor(None, self.embedding_manager.embed, query)

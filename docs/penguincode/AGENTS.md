@@ -98,7 +98,7 @@ Read-only agent for understanding codebases.
 agent = ExplorerAgent(
     ollama_client=client,
     working_dir="/path/to/project",
-    model="llama3.2:3b"  # Lightweight model for reading
+    model="gemma4:e4b"  # Lightweight model for reading
 )
 
 result = await agent.run("Find all test files")
@@ -195,7 +195,7 @@ Models are configured in `config.yaml` with a tiered approach for optimal VRAM u
 ```yaml
 models:
   # Orchestration (routing decisions)
-  orchestration: "llama3.2:3b"
+  orchestration: "gemma4:e4b"
 
   # Planning (task breakdown)
   planning: "deepseek-coder:6.7b"
@@ -205,12 +205,14 @@ models:
   execution_lite: "qwen2.5-coder:7b"  # Simple edits
 
   # Exploration (code reading)
-  exploration: "llama3.2:3b"          # Standard reads
-  exploration_lite: "llama3.2:3b"     # Quick reads
+  exploration: "gemma4:e4b"          # Standard reads
+  exploration_lite: "gemma4:e4b"     # Quick reads
 
   # Research (web lookups)
-  research: "llama3.2:3b"
+  research: "gemma4:e4b"
 ```
+
+`gemma4:e4b` is the shipped default for every role above; swap in `gemma4:12b` if the host can carry it (~8GB VRAM) for more complex ops like coding.
 
 **Complexity-Based Selection**:
 ChatAgent estimates task complexity and selects appropriate model:
@@ -227,7 +229,7 @@ agents:
   executor:
     model: "qwen2.5-coder:7b"
   explorer:
-    model: "llama3.2:3b"
+    model: "gemma4:e4b"
   planner:
     model: "deepseek-coder:6.7b"
 ```
@@ -376,7 +378,7 @@ Tool execution is logged and displayed:
 from penguincode.agents.base import BaseAgent, AgentConfig, Permission
 
 class MyCustomAgent(BaseAgent):
-    def __init__(self, ollama_client, model="llama3.2:3b"):
+    def __init__(self, ollama_client, model="gemma4:e4b"):
         config = AgentConfig(
             name="my_agent",
             model=model,

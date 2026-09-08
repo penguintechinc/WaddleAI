@@ -55,7 +55,9 @@ and `gemma4:2b` does not exist.
 
 ### General Purpose Models
 
-For general generation, reach for `gemma4:12b` wherever the host can carry it:
+`gemma4:e4b` is the default for every role. For **more complex operations —
+coding especially — `gemma4:12b` is the recommendation**, wherever the host can
+carry it (~8GB VRAM):
 
 ```bash
 # Recommended default for general local generation
@@ -404,7 +406,7 @@ Use WaddleAI routing:
 | Use Case | Model | Size | Quality |
 |----------|-------|------|---------|
 | Routing / quick / light | gemma4:e4b | ~4GB | Fast — supported minimum |
-| Chat (general) | gemma4:12b | ~8GB | Recommended where the host allows |
+| Complex ops / coding | gemma4:12b | ~8GB | Recommended, not the default — opt in |
 | Code | codellama | 4GB | Excellent |
 | Analysis | mixtral | 26GB | Excellent |
 | Embeddings | nomic-embed-text | 274MB | Good |

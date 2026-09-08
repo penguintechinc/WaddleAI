@@ -32,7 +32,8 @@ PenguinCode is a CLI tool that leverages local LLMs (via Ollama) to provide inte
    - Pull required models:
      ```bash
      ollama pull deepseek-coder:6.7b
-     ollama pull llama3.2:3b
+     ollama pull gemma4:e4b   # default for orchestration/exploration/research
+     ollama pull gemma4:12b   # recommended for complex ops like coding
      ollama pull qwen2.5-coder:7b
      ollama pull nomic-embed-text
      ```

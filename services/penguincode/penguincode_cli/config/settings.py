@@ -20,14 +20,14 @@ class ModelsConfig:
     """Global model role configuration."""
 
     planning: str = "deepseek-coder:6.7b"
-    orchestration: str = "llama3.2:3b"
-    research: str = "llama3.2:3b"
+    orchestration: str = "gemma4:e4b"
+    research: str = "gemma4:e4b"
     # Execution models - use lightweight for simple tasks, full for complex
     execution: str = "qwen2.5-coder:7b"  # Complex execution (refactoring, multi-file)
     execution_lite: str = "qwen2.5-coder:1.5b"  # Lightweight execution (simple edits)
     # Exploration models
-    exploration: str = "llama3.2:3b"  # Standard exploration
-    exploration_lite: str = "llama3.2:1b"  # Quick file reads, simple searches
+    exploration: str = "gemma4:e4b"  # Standard exploration
+    exploration_lite: str = "gemma4:e4b"  # Quick file reads, simple searches
 
 
 @dataclass

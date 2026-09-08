@@ -411,7 +411,7 @@ class RBACManager:
         self,
         user_context: UserContext,
         name: str,
-        permissions: dict[str, bool] = None,
+        permissions: dict[str, bool] | None = None,
         expires_days: int | None = None,
     ) -> tuple[str, str]:
         """Create new API key for user."""

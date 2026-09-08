@@ -90,7 +90,7 @@ jobs:
             ### Requirements
 
             - [Ollama](https://ollama.ai) installed and running
-            - Models pulled: `ollama pull llama3.2:3b qwen2.5-coder:7b deepseek-coder:6.7b`
+            - Models pulled: `ollama pull gemma4:e4b gemma4:12b qwen2.5-coder:7b deepseek-coder:6.7b` (`gemma4:e4b` is the default; `gemma4:12b` is recommended for complex ops like coding)
             - Optional: `ollama pull nomic-embed-text` (for memory features)
 
             ### Platform Support

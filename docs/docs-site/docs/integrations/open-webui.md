@@ -284,7 +284,7 @@ Open WebUI benefits from WaddleAI's routing LLM:
 
 - Programming questions → codellama or Claude
 - Complex reasoning → GPT-4 or Claude Opus
-- Simple queries → gemma4:12b or local Ollama models
+- Simple queries → gemma4:e4b (the default); complex ops and coding → gemma4:12b
 - Analysis tasks → Specialized models
 
 ### Model Preferences

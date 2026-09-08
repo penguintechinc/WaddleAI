@@ -52,7 +52,7 @@ class TestProvisionBasic:
         data = await resp.get_json()
         model_names = {m["name"] for m in data["ollama"]["models"]}
         assert "codellama:7b" in model_names
-        assert "llama3.2:3b" in model_names
+        assert "gemma4:e4b" in model_names
         assert "nomic-embed-text" in model_names
 
     async def test_provision_includes_skills(self, api_client):

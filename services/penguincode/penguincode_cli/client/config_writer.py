@@ -71,7 +71,7 @@ def write_opencode_json(config: dict) -> Path:
         "provider": {
             "ollama": {"apiUrl": ollama.get("api_url", "http://localhost:11434")},
         },
-        "model": agent_block.get("foreman", {}).get("model", "ollama/llama3.2:3b"),
+        "model": agent_block.get("foreman", {}).get("model", "ollama/gemma4:e4b"),
         "agent": agent_block,
         "mcpServers": mcp_block,
         "instructions": instructions,

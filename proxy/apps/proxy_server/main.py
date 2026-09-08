@@ -73,6 +73,7 @@ from .pipeline import (
     RoutingStage,
     SecurityInStage,
     SecurityOutStage,
+    Stage,
     TokenBudgetStage,
 )
 from .pipeline.knowledge_stage import (
@@ -339,7 +340,7 @@ class ProxyServer:
             """Simple wrapper to provide is_feature_enabled method for pipeline."""
 
             @staticmethod
-            def is_feature_enabled(flag_key: str, distinct_id: str = None) -> bool:
+            def is_feature_enabled(flag_key: str, distinct_id: str | None = None) -> bool:
                 return is_feature_enabled(flag_key, distinct_id or "server", default=False)
 
         self.features = FeatureFlagsHelper()
@@ -658,8 +659,13 @@ class ProxyServer:
             Initialized ProxyPipeline instance.
 
         """
-        from shared.utils.metering import MeteringBuffer, PenguinDALUsageWriter
-        from shared.utils.token_limiter import TokenLimiter
+        from shared.utils.metering import (
+            AggregatedMetrics,
+            MeteringBuffer,
+            MeteringEvent,
+            PenguinDALUsageWriter,
+        )
+        from shared.utils.token_limiter import GateDecision, KeyLimits, TokenLimiter
 
         # Get connectors dict from llm_manager
         connectors_dict = {}
@@ -668,7 +674,7 @@ class ProxyServer:
 
         # Build stage list - TokenBudgetStage and MeterStage may be skipped in test mode
         # where Redis/Valkey is unavailable
-        stages = [
+        stages: list[Stage] = [
             AuthStage(name="auth", flag=None),
         ]
 
@@ -705,17 +711,33 @@ class ProxyServer:
         # REDIS_URL, so `valkey` construction above already failed and is
         # None regardless of this branch.
         if _TEST_MODE or valkey is None:
-            # Simple mock token limiter for test mode / Valkey unavailable
-            class MockTokenLimiter:
-                async def reserve(self, vkey_id, estimated_tokens, estimated_usd, limits):
-                    from shared.utils.token_limiter import GateDecision
+            # Mock token limiter for test mode / Valkey unavailable. Subclasses
+            # TokenLimiter (rather than duck-typing) so it satisfies
+            # TokenBudgetStage/MeterStage's nominal `TokenLimiter` parameter;
+            # reserve/reconcile are overridden and never touch Valkey.
+            class MockTokenLimiter(TokenLimiter):
+                """Always-allow TokenLimiter stand-in; never calls Valkey."""
 
+                def __init__(self) -> None:
+                    """Skip TokenLimiter's Valkey/features wiring -- unused here."""
+                    super().__init__(valkey=None, features=None)
+
+                async def reserve(
+                    self,
+                    vkey_id: int,
+                    estimated_tokens: int,
+                    estimated_usd: float,
+                    limits: KeyLimits,
+                ) -> GateDecision:
+                    """Always allow; test-mode/no-Valkey path enforces no budget."""
                     return GateDecision(allowed=True, reason=None, reservation_id=f"mock-{vkey_id}")
 
-                async def reconcile(self, reservation_id, actual_tokens, actual_usd):
-                    pass
+                async def reconcile(
+                    self, reservation_id: str, actual_tokens: int, actual_usd: float
+                ) -> None:
+                    """No-op; nothing was reserved to reconcile."""
 
-            token_limiter = MockTokenLimiter()
+            token_limiter: TokenLimiter = MockTokenLimiter()
         else:
             # `valkey` was already constructed above (shared by TokenBudgetStage
             # and CacheStage); TokenLimiter never issues a call on a client that
@@ -893,12 +915,27 @@ class ProxyServer:
 
         # Metering stage - requires Redis/Valkey and database
         if _TEST_MODE:
-            # In test mode, use a mock metering buffer
-            class MockMeteringBuffer:
-                def record(self, event):
-                    pass
+            # In test mode, use a mock metering buffer. Subclasses MeteringBuffer
+            # (rather than duck-typing) so it satisfies MeterStage's nominal
+            # `MeteringBuffer` parameter; record() is overridden to no-op and
+            # the buffer/flush machinery is never started (start() unused).
+            class _NoOpUsageWriter:
+                """No-op UsageWriter; MockMeteringBuffer.record() never buffers."""
 
-            metering_buffer = MockMeteringBuffer()
+                def write_aggregated_row(self, agg: AggregatedMetrics) -> None:
+                    """Discard; never reached since record() below is a no-op."""
+
+            class MockMeteringBuffer(MeteringBuffer):
+                """Always-discard MeteringBuffer stand-in; never writes to the DB."""
+
+                def __init__(self) -> None:
+                    """Wire a no-op writer; record() is overridden so it's unused."""
+                    super().__init__(writer=_NoOpUsageWriter())
+
+                def record(self, event: MeteringEvent) -> None:
+                    """No-op; test mode does not persist usage."""
+
+            metering_buffer: MeteringBuffer = MockMeteringBuffer()
         else:
             usage_writer = PenguinDALUsageWriter(db=self.db)
             metering_buffer = MeteringBuffer(writer=usage_writer, interval=1.0)
@@ -1125,7 +1162,7 @@ async def get_current_user():
 
 def determine_target_model(
     request_model: str | None, user_context, x_preferred_model: str | None = None
-) -> str:
+) -> str | None:
     """Determine target model using a fallback hierarchy.
 
     1. Request model parameter (if provided)
@@ -1142,7 +1179,9 @@ def determine_target_model(
         x_preferred_model: X-Preferred-Model header value
 
     Returns:
-        Target model name
+        Target model name, or None to let the routing LLM decide (Priority 6/7) --
+        both call sites (`chat_completions`, `anthropic_messages`) already guard
+        this with an `or <fallback>` and never assume a bare `str`.
 
     """
     # Priority 1: Request model parameter

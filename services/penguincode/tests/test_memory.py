@@ -167,12 +167,12 @@ class TestMemoryManagerFactory:
         """Test creating memory manager via factory."""
         config = MemoryConfig(enabled=True, vector_store="chroma")
 
-        manager = create_memory_manager(config, ollama_url="http://localhost:11434", llm_model="llama3.2:3b")
+        manager = create_memory_manager(config, ollama_url="http://localhost:11434", llm_model="gemma4:e4b")
 
         assert isinstance(manager, MemoryManager)
         assert manager.config == config
         assert manager.ollama_url == "http://localhost:11434"
-        assert manager.llm_model == "llama3.2:3b"
+        assert manager.llm_model == "gemma4:e4b"
 
     def test_create_disabled_memory_manager(self):
         """Test creating disabled memory manager."""

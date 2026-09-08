@@ -127,7 +127,7 @@ class Mem0MemoryStore(MemoryStore):
         self.api_key = api_key
         self.org_id = org_id
         self.config = config or {}
-        self.client = None
+        self.client: MemoryClient | None = None
 
     async def initialize(self):
         """Initialize mem0 client."""
@@ -146,11 +146,23 @@ class Mem0MemoryStore(MemoryStore):
             logger.error(f"Failed to initialize mem0: {e}")
             raise
 
+    async def _ensure_client(self) -> MemoryClient:
+        """Return the mem0 client, initializing it on first use.
+
+        Centralizes the None-narrowing so callers get a concrete
+        `MemoryClient` instead of the `MemoryClient | None` attribute type
+        mypy sees on `self.client`.
+        """
+        if self.client is None:
+            await self.initialize()
+        if self.client is None:
+            raise RuntimeError("mem0 client failed to initialize")
+        return self.client
+
     async def store_memory(self, entry: MemoryEntry) -> bool:
         """Store memory in mem0."""
         try:
-            if not self.client:
-                await self.initialize()
+            client = await self._ensure_client()
 
             # Prepare metadata — 'scope' mirror + author for the schemaless backend
             metadata = {
@@ -169,7 +181,7 @@ class Mem0MemoryStore(MemoryStore):
             mem0_user = (
                 f"org-{entry.organization_id}" if entry.scope_type == "org" else str(entry.user_id)
             )
-            self.client.add(entry.content, user_id=mem0_user, metadata=metadata)
+            client.add(entry.content, user_id=mem0_user, metadata=metadata)
 
             logger.debug(f"Stored memory in mem0: {entry.id}")
             return True
@@ -195,8 +207,7 @@ class Mem0MemoryStore(MemoryStore):
         ('org-{organization_id}') — and merges by relevance score.
         """
         try:
-            if not self.client:
-                await self.initialize()
+            client = await self._ensure_client()
 
             def _convert(results: list, personal_bucket: bool) -> list[MemoryEntry]:
                 memories: list[MemoryEntry] = []
@@ -246,10 +257,10 @@ class Mem0MemoryStore(MemoryStore):
 
             memories: list[MemoryEntry] = []
             if scope in ("user", "all"):
-                personal = self.client.search(query, user_id=str(user_id), limit=limit)
+                personal = client.search(query, user_id=str(user_id), limit=limit)
                 memories.extend(_convert(personal, personal_bucket=True))
             if scope in ("org", "all"):
-                org = self.client.search(query, user_id=f"org-{organization_id}", limit=limit)
+                org = client.search(query, user_id=f"org-{organization_id}", limit=limit)
                 memories.extend(_convert(org, personal_bucket=False))
 
             memories.sort(key=lambda m: m.relevance_score, reverse=True)
@@ -269,11 +280,10 @@ class Mem0MemoryStore(MemoryStore):
     ) -> list[MemoryEntry]:
         """Get recent memories from mem0."""
         try:
-            if not self.client:
-                await self.initialize()
+            client = await self._ensure_client()
 
             # mem0 get_all for user
-            results = self.client.get_all(user_id=str(user_id))
+            results = client.get_all(user_id=str(user_id))
 
             # Filter and convert
             cutoff = datetime.utcnow() - timedelta(hours=hours)
@@ -332,10 +342,9 @@ class Mem0MemoryStore(MemoryStore):
     async def delete_memory(self, memory_id: str) -> bool:
         """Delete memory from mem0."""
         try:
-            if not self.client:
-                await self.initialize()
+            client = await self._ensure_client()
 
-            self.client.delete(memory_id)
+            client.delete(memory_id)
             logger.debug(f"Deleted memory from mem0: {memory_id}")
             return True
 
@@ -605,7 +614,7 @@ class WaddleAIMemoryManager:
             avg_length = sum(len(m.content) for m in recent_memories) / max(total_memories, 1)
 
             # Group by day
-            daily_counts = {}
+            daily_counts: dict[str, int] = {}
             for memory in recent_memories:
                 day = memory.created_at.date().isoformat()
                 daily_counts[day] = daily_counts.get(day, 0) + 1
@@ -810,6 +819,7 @@ def create_memory_manager(
         WaddleAIMemoryManager instance
 
     """
+    memory_store: MemoryStore
     if backend == "pgvector":
         _write_db = write_db or db
         if _write_db is None:

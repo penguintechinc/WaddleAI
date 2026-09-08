@@ -94,7 +94,7 @@ class ResearcherAgent(BaseAgent):
         ollama_client: OllamaClient,
         research_config: ResearchConfig,
         working_dir: str | None = None,
-        model: str = "llama3.2:3b",
+        model: str = "gemma4:e4b",
         config: AgentConfig | None = None,
         mcp_tools: tuple[dict, list] | None = None,
     ):
@@ -105,7 +105,7 @@ class ResearcherAgent(BaseAgent):
             ollama_client: Ollama client instance
             research_config: Research/search configuration
             working_dir: Working directory for local file operations
-            model: Model to use (default: llama3.2:3b)
+            model: Model to use (default: gemma4:e4b)
             config: Optional custom config
             mcp_tools: Optional (tools_dict, tool_defs) from MCPToolManager
         """

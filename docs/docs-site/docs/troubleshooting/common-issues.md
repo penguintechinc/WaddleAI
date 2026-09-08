@@ -270,7 +270,7 @@ sudo setcap cap_net_admin=eip $(which python3.13)
 ```bash
 # Ollama for fast queries
 ollama pull gemma4:e4b   # Routing (minimum supported)
-ollama pull gemma4:12b   # General purpose
+ollama pull gemma4:12b   # Recommended for complex ops / coding (optional)
 ```
 
 4. **Optimize database**:

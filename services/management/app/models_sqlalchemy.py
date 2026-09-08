@@ -23,12 +23,20 @@ from sqlalchemy import (
     create_engine,
     text,
 )
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import DeclarativeBase, relationship
 
 logger = logging.getLogger(__name__)
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    """Declarative base for every ORM model in the management schema.
+
+    SQLAlchemy 2.0's class-based base, not the legacy ``declarative_base()``
+    factory: the factory returns a value mypy cannot use as a base class, so
+    every model below raised "Invalid base class" plus "not valid as a type".
+    Runtime behaviour (``Base.metadata``, ``Column``-style attributes) is
+    unchanged -- ``declarative_base()`` is itself a shim over this in 2.0.
+    """
 
 
 class Organization(Base):
