@@ -8,7 +8,12 @@ prior one punts (returns None).
 from dataclasses import dataclass, field
 from typing import Any
 
-from shared.routing.classifier import Classification, ClassifierClient, classify
+from shared.routing.classifier import (
+    _DEFAULT_CLASSIFIER_MODEL,
+    Classification,
+    ClassifierClient,
+    classify,
+)
 from shared.routing.heuristics import HeuristicRule, RequestSignals, evaluate_rules
 
 _DEFAULT_FALLBACK_TOOL_TYPE = "general"
@@ -32,7 +37,11 @@ async def determine_tool_type(
     prompt_text: str = "",
     classifier_prompt: str | None = None,
     classifier_client: ClassifierClient | None = None,
-    classifier_model: str = "gemma4:e2b",
+    # Single source of truth, not a second literal: this default drifted to the
+    # withdrawn gemma4:e2b when the floor moved to e4b, and because classify()
+    # degrades silently on a failed call, the only symptom was every request
+    # routing identically. Import the constant so it cannot drift again.
+    classifier_model: str = _DEFAULT_CLASSIFIER_MODEL,
     valkey: Any = None,
 ) -> ToolTypeDecision:
     """Run the tool-type cascade, consulting each stage only when the prior punts.

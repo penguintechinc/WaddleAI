@@ -1286,12 +1286,45 @@ class OllamaConnector(LLMConnector):
     """Ollama local LLM connector."""
 
     def __init__(self, name: str, config: dict[str, Any]):
-        """Open the aiohttp session used for every Ollama request and a tiktoken estimator."""
+        """Bind config and a tiktoken estimator; the HTTP session is opened lazily."""
         super().__init__(name, config)
-        self.session = aiohttp.ClientSession()
+        # Deliberately NOT `aiohttp.ClientSession()` here. Constructing one
+        # requires a running event loop, so an eager session made this class
+        # impossible to instantiate from sync code -- `RuntimeError: no running
+        # event loop` -- and, worse, bound the session to whichever loop
+        # happened to be running at construction, so reuse across loops failed
+        # later and further from the cause. Opened on first use instead, inside
+        # the loop that will actually drive the request.
+        self._session: aiohttp.ClientSession | None = None
 
         # Use OpenAI tokenizer for estimation
         self.token_estimator = tiktoken.encoding_for_model("gpt-3.5-turbo")
+
+    @property
+    def session(self) -> aiohttp.ClientSession:
+        """The HTTP session, opened on first use inside the running event loop.
+
+        Re-opens if a previous session was closed, so a connector stays usable
+        after an explicit close() rather than failing on a stale handle.
+
+        The closed check is `is True` rather than truthiness on purpose: an
+        injected test double's `.closed` is itself a Mock, which is truthy, so a
+        truthiness check would silently discard the injected session and open a
+        real one — turning a unit test into an outbound HTTP call.
+        """
+        if self._session is None or getattr(self._session, "closed", False) is True:
+            self._session = aiohttp.ClientSession()
+        return self._session
+
+    @session.setter
+    def session(self, value: aiohttp.ClientSession | None) -> None:
+        """Allow a caller (in practice, a test) to inject or clear the session."""
+        self._session = value
+
+    @session.deleter
+    def session(self) -> None:
+        """Drop the session handle without closing it; `patch.object` needs this."""
+        self._session = None
 
     async def chat_completion(
         self, messages: list[dict[str, str]], model: str, **kwargs
@@ -1532,9 +1565,16 @@ class OllamaConnector(LLMConnector):
             }
 
     async def close(self):
-        """Close the HTTP session."""
-        if self.session:
-            await self.session.close()
+        """Close the HTTP session if one was ever opened.
+
+        Reads `_session` directly rather than the property: touching `session`
+        here would open a brand-new session purely in order to close it. The
+        closed check is `is not True` for the same reason the property uses
+        `is True` — an injected double's `.closed` is a truthy Mock, and plain
+        truthiness would skip closing it.
+        """
+        if self._session is not None and getattr(self._session, "closed", False) is not True:
+            await self._session.close()
 
 
 class LlamaCppConnector(LLMConnector):
