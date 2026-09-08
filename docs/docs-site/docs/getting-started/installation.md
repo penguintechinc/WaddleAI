@@ -122,11 +122,39 @@ sequential and bandwidth-bound, so it tracks model size; prompt processing is
 parallel and compute-bound, so it largely does not. A card chosen for capacity
 alone, with modest bandwidth, gets the worst of that trade.
 
-**Concurrency is a third thing again.** Models resident on one GPU share its
-SMs and bandwidth. Loading more models does not add throughput — it divides the
-same throughput across more consumers, and each additional concurrent request
-lengthens the queue for all of them. Resident model count is a capacity
-question; requests per second is a throughput question.
+### Concurrency: how many models may generate at once
+
+Resident model count and *concurrently generating* model count are different
+limits. Being loaded costs VRAM; generating costs bandwidth.
+
+Measured on the 16 GB mobile RTX 3080, as a percentage of each model's solo
+speed:
+
+| Generating at once | Per-stream throughput | Aggregate work |
+|---|---|---|
+| 1 | 100% | 1.00× |
+| **2** | `e4b` **100%**, `shieldgemma` 60% | **1.60×** |
+| 3 | `e4b` 42%, `shieldgemma` 37%, `12b` 55% | **1.34×** |
+
+Two concurrent generations are close to free — the larger model lost nothing
+measurable and aggregate work rose to 1.60×. **Three is past the knee**:
+aggregate throughput *falls* to 1.34×, so the third request does not merely wait
+its turn, it makes the other two slower than the work it contributes. Beyond the
+ceiling you lose latency and throughput together.
+
+**Rule of thumb: two concurrently generating LLMs per xx80-class GPU, three on
+an xx90.** Embedding models do not count against this — they are small, their
+work is a single forward pass rather than sequential token generation, and
+`nomic-embed-text` at 0.32 GB does not contend meaningfully.
+
+Size the two limits separately:
+
+- **Resident** count → VRAM and `OLLAMA_MAX_LOADED_MODELS`
+- **Concurrently generating** count → memory bandwidth, roughly 2 per xx80
+
+A deployment can therefore hold four models resident and still want to serve
+only two generations at a time. Those are not in conflict; they are answers to
+different questions.
 
 **Cold load is ~5 s per model.** That is the real cost of the eviction described
 above: every evict-and-reload cycle spends roughly five seconds before a single
