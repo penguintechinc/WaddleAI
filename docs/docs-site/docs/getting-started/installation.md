@@ -50,36 +50,56 @@ display buffer too if the card is also driving a monitor.
 `gemma4:12b` is the default for coding roles (orchestration, exploration) and
 costs **8.42 GB** once it has context — more than the entire e4b-only set.
 
-**The problem is not whether the weights fit. It is whether they fit at the
-same time.** Measured on a ~12 GB card, they do not, and Ollama resolves that
-silently by evicting:
+**The binding constraint is a config default, not VRAM.** Ollama's
+`OLLAMA_MAX_LOADED_MODELS` defaults to **3**. WaddleAI's full local set is
+**four** models — `gemma4:e4b`, `gemma4:12b`, `shieldgemma:2b`,
+`nomic-embed-text` — so one is always evicted no matter how much VRAM the card
+has. Measured on a 16 GB host:
 
-| State | Resident |
-|---|---|
-| Baseline set | `e4b` 3.26 + `shieldgemma` 2.14 + `nomic` 0.32 = **5.72 GB** |
-| After a `12b` request | `12b` **8.42** + `shieldgemma` 2.14 + `nomic` 0.32 = **10.89 GB** — `e4b` evicted |
+| Models requested | Resident | Total VRAM |
+|---|---|---|
+| `e4b`, `shieldgemma`, `nomic` | 3 | 5.72 GB |
+| `12b`, `shieldgemma`, `nomic` | 3 | 10.89 GB |
+| `e4b`, `12b`, `shieldgemma` | 3 | **13.49 GB** |
+| all four | **3** — one evicted | 5.72 GB |
 
-`gemma4:e4b` is the routing classifier, so it runs on **every request that
-reaches stage 2**. `gemma4:12b` serves coding requests. On a card that cannot
-hold both, a coding workload alternates between them and each alternation is an
-evict-and-reload: route (load `e4b`) → dispatch (evict `e4b`, load `12b`) →
-next request (evict `12b`, load `e4b`) → and so on. Nothing errors. Throughput
-simply collapses, and the cause is invisible unless you watch `/api/ps`.
+The third row is the proof: 13.49 GB stays resident without complaint, so
+memory is not what is stopping the fourth model. Buying a larger card does not
+fix this.
 
-To run both **without thrashing**, both must stay resident: 5.72 + 8.42 ≈
-14.2 GB of weights, plus KV headroom.
+```bash
+# on the Ollama host
+OLLAMA_MAX_LOADED_MODELS=4   # or higher, if you serve more models
+```
+
+**Why it matters.** `gemma4:e4b` is the routing classifier, so it runs on every
+request that reaches stage 2; `gemma4:12b` serves coding requests. If the cap
+evicts one of them, a coding workload alternates between the two and each
+alternation is an evict-and-reload. Nothing errors — throughput simply
+collapses, and the cause is invisible unless you check `/api/ps`:
+
+```bash
+curl -s http://<host>:11434/api/ps | python3 -m json.tool | grep -E '"name"|size_vram'
+```
+
+Fewer models listed than you serve means the cap is evicting, and raising
+`OLLAMA_MAX_LOADED_MODELS` — not more VRAM — is the fix.
+
+**VRAM still matters, separately.** Once the cap is raised, all four must
+actually fit: 5.72 GB (baseline) + 8.42 GB (`12b` with context) ≈ **14.2 GB of
+weights**, plus KV headroom.
 
 | Serving | VRAM | Example cards | Notes |
 |---|---|---|---|
 | e4b only | 8 GB min / 12 GB rec | RTX 4060 / RTX 3060 12GB | See table above |
-| **e4b + 12b** | **16 GB min** | RTX 4080, RTX 3090 | Requires Q4 for the 12B and tightly managed context |
-| e4b + 12b, comfortable | **24 GB** | RTX 3090 / 4090 | Room for Q8 or unquantized 12B, all models resident, 8K+ contexts |
+| **e4b + 12b** | **16 GB** | RTX 4080, RTX 3090, mobile RTX 3080 16GB | Verified: 13.49 GB co-resident. Requires Q4 and managed context |
+| e4b + 12b, comfortable | **24 GB** | RTX 3090 / 4090 | Room for Q8 or unquantized 12B and 8K+ contexts |
 
-Quantization is what makes any of this fit. At Ollama's default **Q4_K_M** the
-12B model is ~7.5–8.5 GB; at Q8 it is ~13–14 GB and at BF16 ~24–27 GB. A stack
-that fits comfortably at Q4 will OOM at Q8 on the same card — or worse, Ollama
-silently offloads layers to system RAM and generation speed collapses without
-an error.
+Quantization is what makes this fit. At Ollama's default **Q4_K_M** the 12B
+model is ~7.5–8.5 GB; at Q8 it is ~13–14 GB and at BF16 ~24–27 GB. A stack that
+fits comfortably at Q4 will OOM at Q8 on the same card — or worse, Ollama
+silently offloads layers to system RAM and generation speed collapses without an
+error.
 
 An 8 GB card cannot host `12b` alongside the baseline at all. It will OOM
 immediately or fall back to CPU/RAM offloading.
