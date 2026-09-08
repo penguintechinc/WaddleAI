@@ -114,7 +114,7 @@ Measured on a 16 GB mobile RTX 3080, Q4_K_M:
 | Model | Generation | Prompt eval | Cold load |
 |---|---|---|---|
 | `gemma4:e4b` | 86.8 tok/s | 192.7 tok/s | 5.76 s |
-| `gemma4:12b` | 45.9 tok/s | 169.2 tok/s | 4.88 s |
+| `gemma4:12b-it-qat` | 48.4 tok/s | 523 tok/s | 5.19 s |
 
 Note what scales and what does not. Generation is **1.9× slower** on the larger
 model while prompt evaluation is only **1.14× slower** — token generation is
@@ -237,11 +237,24 @@ immediately or fall back to CPU/RAM offloading.
 training rather than after, so it preserves more reasoning quality than
 post-training quantization at a comparable — slightly smaller — footprint.
 
-**The measurements on this page were taken against the standard `gemma4:12b`**
-(8.09 GB idle, 8.42 GB with context, 13.49 GB co-resident with `e4b` and
-`shieldgemma`). The QAT variant is reported to run a few hundred MB smaller;
-that has not been measured here, so size from the standard figures and treat
-any saving as a bonus rather than budgeted headroom.
+Measured on the 16 GB mobile RTX 3080, both at Q4-class quantization, same
+prompts and token budgets:
+
+| | `gemma4:12b` | `gemma4:12b-it-qat` |
+|---|---|---|
+| Disk | 7.56 GB | **7.15 GB** |
+| Resident VRAM | 8.42 GB | **8.02 GB** |
+| Generation | 45.9 tok/s | **48.4 tok/s** |
+| Prompt eval | 446 tok/s | **523 tok/s** |
+| Cold load | 5.19 s | 5.19 s |
+| Structured-output validity | 6/6 | 6/6 |
+
+QAT is smaller *and* faster on every axis, and output quality held on
+side-by-side technical prompts. That is why it is the default.
+
+**The 0.40 GB saving does not change how many models stay resident**, because
+that ceiling is `OLLAMA_MAX_LOADED_MODELS` (see above), not VRAM. Budget the
+saving as headroom for context growth, not as room for another model.
 
 Whichever 12B tag is loaded, verify the models you serve are all actually
 resident:
