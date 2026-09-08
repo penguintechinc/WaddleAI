@@ -39,7 +39,12 @@ _DEFAULT_QDRANT_URL = "http://localhost:6333"
 _DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 _DEFAULT_EMBEDDING_MODEL = "nomic-embed-text"
 _DEFAULT_EMBEDDING_DIMENSIONS = 768
-_DEFAULT_CHAT_MODEL = "gemma4:e2b"
+# General local chat, not a quick/light utility role: the house guidance is
+# gemma4:e4b for routing/quick/light work and gemma4:12b wherever the host
+# can carry it, so the local-only profile's chat model defaults to 12b.
+# (Gemma 4 tags: e2b/e4b/12b/26b/31b -- the "e" prefix exists only on the
+# MatFormer effective-size variants, so the 12B tag is "12b", not "e12b".)
+_DEFAULT_CHAT_MODEL = "gemma4:12b"
 _DEFAULT_COLLECTION_PREFIX = "waddleai_local"
 
 
@@ -48,7 +53,7 @@ class LocalProfileConfig:
     """Config for the local-only profile: mem0 + Ollama + Qdrant, nothing off-host.
 
     Every field has a sane default matching the reference setup (Qdrant on
-    its standard port, ``nomic-embed-text`` via Ollama, ``gemma4:e2b`` chat
+    its standard port, ``nomic-embed-text`` via Ollama, ``gemma4:12b`` chat
     default). No literal here is duplicated at call sites — always go
     through ``LocalProfileConfig.from_env()`` or an explicit instance.
     """

@@ -156,7 +156,7 @@ class RoutingEngine:
         # concrete client-requested model is eligible -- a "waddleai/<tool
         # type>" pseudo-model is a routing directive, not a real model name,
         # so it's excluded before ever reaching model_aliases. The raw
-        # (possibly provider-qualified, e.g. "ollama:gemma4:e2b") string is
+        # (possibly provider-qualified, e.g. "ollama:gemma4:e4b") string is
         # passed through unstripped: AliasResolver.resolve_alias() does its
         # own split_provider_prefix() first internally, so stripping again
         # here would throw away a real provider prefix (misread as "no

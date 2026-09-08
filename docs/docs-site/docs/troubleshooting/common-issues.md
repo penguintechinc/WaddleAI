@@ -199,12 +199,11 @@ curl -H "Authorization: Bearer $WADDLEAI_API_KEY" \
 # Verify Ollama is running
 curl http://localhost:11434/api/tags
 
-# Pull fast model
-ollama pull llama3.2:1b
-
-# Update .env
-ROUTING_LLM_MODEL=llama3.2:1b
+# Pull routing model (minimum: gemma4:e4b)
+ollama pull gemma4:e4b
 ```
+
+   Configure routing model in Management Portal (Routing → Routing LLM Model), not via .env.
 
 2. **Enable routing cache**:
 ```bash
@@ -270,8 +269,8 @@ sudo setcap cap_net_admin=eip $(which python3.13)
 3. **Use local models for simple tasks**:
 ```bash
 # Ollama for fast queries
-ollama pull llama3.2:1b  # Very fast routing
-ollama pull llama3.2:3b  # Fast general purpose
+ollama pull gemma4:e4b   # Routing (minimum supported)
+ollama pull gemma4:12b   # General purpose
 ```
 
 4. **Optimize database**:

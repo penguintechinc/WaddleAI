@@ -53,11 +53,10 @@ DATABASE_URL=postgresql://user:pass@host:5432/waddleai
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ROUTING_LLM_PROVIDER` | ollama | Provider for routing LLM |
-| `ROUTING_LLM_MODEL` | llama3.2:1b | Model for routing decisions |
-| `ROUTING_LLM_ENDPOINT` | http://localhost:11434 | Routing LLM endpoint |
 | `ROUTING_INSTRUCTIONS` | - | Default routing instructions |
 | `ROUTING_CACHE_TTL` | 300 | Cache routing decisions (seconds) |
+
+The routing LLM model is configured in the Management Portal (Routing → Routing LLM Model), not via environment variables. Minimum supported model: `gemma4:e4b` (e2b was withdrawn 2026-09-07).
 
 Example routing instructions:
 ```bash

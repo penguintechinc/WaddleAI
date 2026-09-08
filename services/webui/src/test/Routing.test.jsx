@@ -279,7 +279,7 @@ describe('Routing page - admin: Routing LLM Model selector', () => {
     );
   });
 
-  it('offers only the five valid Gemma 4 tags -- no gemma4:2b, no Gemma 3', async () => {
+  it('offers only Gemma 4 tags at or above the e4b minimum -- no e2b, no gemma4:2b, no Gemma 3', async () => {
     mockGetByUrl();
     render(<Routing />);
     await waitFor(() => {
@@ -287,9 +287,30 @@ describe('Routing page - admin: Routing LLM Model selector', () => {
     });
 
     const values = screen.getAllByRole('option').map((option) => option.value);
-    expect(values).toEqual(['gemma4:e2b', 'gemma4:e4b', 'gemma4:12b', 'gemma4:26b', 'gemma4:31b']);
+    expect(values).toEqual(['gemma4:e4b', 'gemma4:12b', 'gemma4:26b', 'gemma4:31b']);
+    expect(values).not.toContain('gemma4:e2b');
     expect(values).not.toContain('gemma4:2b');
     expect(values.some((v) => v.startsWith('gemma3'))).toBe(false);
+  });
+
+  it('surfaces a below-minimum stored tag as a disabled legacy option', async () => {
+    mockGetByUrl({
+      assignments: {
+        status: 'success',
+        data: [{ id: 7, tool_type: 'routing-classifier', model_name: 'gemma4:e2b', scope: 'global' }],
+      },
+    });
+    render(<Routing />);
+    await waitFor(() => {
+      expect(screen.getByLabelText('Routing LLM Model')).toHaveValue('gemma4:e2b');
+    });
+
+    const legacy = screen
+      .getAllByRole('option')
+      .find((option) => option.value === 'gemma4:e2b');
+    expect(legacy).toBeDefined();
+    expect(legacy).toBeDisabled();
+    expect(legacy.textContent).toContain('below the Gemma 4 E4B minimum');
   });
 
   it('saves the selected model via PUT when an assignment row already exists', async () => {
@@ -319,10 +340,10 @@ describe('Routing page - admin: Routing LLM Model selector', () => {
 
   it('creates the assignment via POST when no row exists yet', async () => {
     mockGetByUrl({ assignments: mockAssignmentsEmpty });
-    axios.post.mockResolvedValue({ data: { status: 'success', data: { id: 9, model_name: 'gemma4:e2b' } } });
+    axios.post.mockResolvedValue({ data: { status: 'success', data: { id: 9, model_name: 'gemma4:e4b' } } });
     render(<Routing />);
     await waitFor(() => {
-      expect(screen.getByLabelText('Routing LLM Model')).toHaveValue('gemma4:e2b');
+      expect(screen.getByLabelText('Routing LLM Model')).toHaveValue('gemma4:e4b');
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Save Routing LLM Model' }));
@@ -330,7 +351,7 @@ describe('Routing page - admin: Routing LLM Model selector', () => {
     await waitFor(() => {
       expect(axios.post).toHaveBeenCalledWith('/api/v1/routing/assignments/', {
         tool_type: 'routing-classifier',
-        model_name: 'gemma4:e2b',
+        model_name: 'gemma4:e4b',
         scope: 'global',
       });
     });

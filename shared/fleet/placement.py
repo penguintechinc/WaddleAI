@@ -109,7 +109,7 @@ class ModelRegistryEntry:
 
 
 def _bare_model_name(model: str) -> str:
-    """Strip a provider prefix (e.g. ``ollama:gemma4:e2b`` -> ``gemma4:e2b``).
+    """Strip a provider prefix (e.g. ``ollama:gemma4:e4b`` -> ``gemma4:e4b``).
 
     Used for registry/cap lookups; the unstripped ``model`` is still what
     gets passed through to the backend.

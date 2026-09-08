@@ -45,7 +45,8 @@ Resolve through the model registry, not hardcoded strings.
 
 | Role | Default | Notes |
 |---|---|---|
-| Routing classifier | `gemma4:e2b` | **No `2b` tag exists** — Gemma 4 publishes `e2b`/`e4b`/`12b`/`26b`/`31b`. Gemma 4 is Apache-2.0, unlike Gemma 1–3 |
+| Routing classifier | `gemma4:e4b` | **`e4b` is the floor** — `e2b` tested below the usable bar 2026-09-07 (migration 019) and is no longer offered. **No `2b` tag exists** — Gemma 4 publishes `e2b`/`e4b`/`12b`/`26b`/`31b`; the `e` prefix marks the MatFormer variants, so the 12B tag is `12b`, never `e12b`. Gemma 4 is Apache-2.0, unlike Gemma 1–3 |
+| Local chat / general generation | `gemma4:12b` | `e4b` is the recommendation for routing and other quick/light roles; reach for `12b` wherever the host can carry it |
 | Security auditor (text) | `shieldgemma:2b` | **ShieldGemma 1**, deliberately. ShieldGemma 2 is a 4B **image-only** classifier and cannot classify text — swapping it in disables text filtering rather than upgrading it |
 | Embeddings (Ollama path) | `nomic-embed-text` | 768-dim |
 | Embeddings (in-process path) | `all-MiniLM-L6-v2` | 384-dim, `SentenceTransformer`. **Not** interchangeable with the above — `rag_integration.py` hardcodes `vector_size = 384` |

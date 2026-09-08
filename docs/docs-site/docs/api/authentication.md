@@ -116,7 +116,7 @@ orgs = requests.get(
 routing = requests.post(
     "https://mgmt.waddleai.com/api/routing/instructions",
     headers={"Authorization": f"Bearer {admin_token}"},
-    json={"instructions": "Route complex queries to GPT-4...", "routing_llm": "llama3.2:1b"},
+    json={"instructions": "Route complex queries to GPT-4...", "routing_llm": "gemma4:e4b"},
 )
 ```
 

@@ -107,13 +107,13 @@ async def test_flag_on_both_reachable_returns_qdrant_backend() -> None:
 
 
 def test_local_profile_config_defaults_match_reference_setup() -> None:
-    """Defaults match the documented reference setup: Qdrant local, nomic-embed-text, gemma4:e2b."""
+    """Defaults match the documented reference setup: Qdrant local, nomic-embed-text, gemma4:12b."""
     config = LocalProfileConfig()
     assert config.qdrant_url == "http://localhost:6333"
     assert config.ollama_host == "http://localhost:11434"
     assert config.embedding_model == "nomic-embed-text"
     assert config.embedding_dimensions == 768
-    assert config.chat_model == "gemma4:e2b"
+    assert config.chat_model == "gemma4:12b"
 
 
 def test_local_profile_config_from_env_overrides(monkeypatch) -> None:
@@ -123,7 +123,7 @@ def test_local_profile_config_from_env_overrides(monkeypatch) -> None:
     monkeypatch.setenv("OLLAMA_HOST", "http://ollama.internal:11434")
     monkeypatch.setenv("WADDLEAI_LOCAL_EMBEDDING_MODEL", "mxbai-embed-large")
     monkeypatch.setenv("WADDLEAI_LOCAL_EMBEDDING_DIMENSIONS", "1024")
-    monkeypatch.setenv("WADDLEAI_LOCAL_CHAT_MODEL", "llama3.1:1b")
+    monkeypatch.setenv("WADDLEAI_LOCAL_CHAT_MODEL", "gemma4:e4b")
 
     config = LocalProfileConfig.from_env()
 
@@ -132,7 +132,7 @@ def test_local_profile_config_from_env_overrides(monkeypatch) -> None:
     assert config.ollama_host == "http://ollama.internal:11434"
     assert config.embedding_model == "mxbai-embed-large"
     assert config.embedding_dimensions == 1024
-    assert config.chat_model == "llama3.1:1b"
+    assert config.chat_model == "gemma4:e4b"
 
 
 def test_feature_flag_key_is_stable() -> None:

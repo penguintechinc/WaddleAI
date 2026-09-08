@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import './Routing.css';
@@ -30,25 +30,48 @@ function Routing() {
   // "Routing LLM Model" -- the routing-classifier tool_type's model_assignments
   // row (spec §7.2, §2.3). Fixed Gemma 4 option list rather than the model
   // registry: this assignment is pinned to the Gemma 4 family specifically
-  // (shared/routing/classifier.py: "gemma4:e2b default, no dual-default
+  // (shared/routing/classifier.py: "gemma4:e4b default, no dual-default
   // alternative required"), unlike ordinary tool-type assignments (chat,
   // code, ...) which can point at any capable model. There is also no live
   // model-registry endpoint yet -- migration 008 (model_registry) hasn't
   // landed (shared/routing/offers.py docstring) -- so even a registry-backed
   // dropdown isn't available to source options from today. Valid Gemma 4
-  // tags only: e2b/e4b/12b/26b/31b -- there is no "2b" tag and "gemma4:2b"
+  // tags are e2b/e4b/12b/26b/31b -- there is no "2b" tag and "gemma4:2b"
   // is unpullable; Gemma 3 and PRC-origin models are never offered here.
+  // e2b is deliberately absent: it tested below the usable bar for stage-2
+  // classification (2026-09-07, migration 019), so e4b is the supported
+  // minimum. A deployment still pinned to a below-minimum tag keeps showing
+  // it (see legacy option below) but cannot re-select it once changed.
   const GEMMA4_MODEL_OPTIONS = [
-    { value: 'gemma4:e2b', label: 'Gemma 4 E2B (default)' },
-    { value: 'gemma4:e4b', label: 'Gemma 4 E4B' },
+    { value: 'gemma4:e4b', label: 'Gemma 4 E4B (default)' },
     { value: 'gemma4:12b', label: 'Gemma 4 12B' },
     { value: 'gemma4:26b', label: 'Gemma 4 26B' },
     { value: 'gemma4:31b', label: 'Gemma 4 31B' },
   ];
-  const [routingModel, setRoutingModel] = useState('gemma4:e2b');
+  const [routingModel, setRoutingModel] = useState('gemma4:e4b');
   const [routingModelId, setRoutingModelId] = useState(null);
   const [routingModelLoading, setRoutingModelLoading] = useState(true);
   const [routingModelSaving, setRoutingModelSaving] = useState(false);
+
+  // A deployment saved before the e4b minimum can still be pinned to a tag the
+  // list no longer offers (e2b). Showing only the supported options would make
+  // the <select> silently render the wrong model as current, so the stored
+  // value is appended as a disabled legacy entry: visible, but not re-selectable
+  // once the admin moves off it.
+  const routingModelOptions = useMemo(() => {
+    if (GEMMA4_MODEL_OPTIONS.some((option) => option.value === routingModel)) {
+      return GEMMA4_MODEL_OPTIONS;
+    }
+    return [
+      ...GEMMA4_MODEL_OPTIONS,
+      {
+        value: routingModel,
+        label: `${routingModel} (unsupported \u2014 below the Gemma 4 E4B minimum)`,
+        disabled: true,
+      },
+    ];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routingModel]);
 
   // "Test Routing Decision" -- dry-run preview via RoutingEngine.decide(),
   // no side effects (no trace persisted, no upstream dispatch).
@@ -88,7 +111,7 @@ function Routing() {
       const entries = Array.isArray(response.data.data) ? response.data.data : [];
       const entry = entries.find((item) => item.scope === 'global') || entries[0] || null;
       if (entry) {
-        setRoutingModel(entry.model_name || 'gemma4:e2b');
+        setRoutingModel(entry.model_name || 'gemma4:e4b');
         setRoutingModelId(entry.id ?? null);
       }
     } catch (err) {
@@ -210,8 +233,8 @@ function Routing() {
                   value={routingModel}
                   onChange={(e) => setRoutingModel(e.target.value)}
                 >
-                  {GEMMA4_MODEL_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
+                  {routingModelOptions.map((option) => (
+                    <option key={option.value} value={option.value} disabled={option.disabled}>
                       {option.label}
                     </option>
                   ))}

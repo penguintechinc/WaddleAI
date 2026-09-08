@@ -38,7 +38,7 @@ WaddleAI is a sophisticated LLM proxy server with intelligent routing, memory in
 │  └─────────────────────────────────────────────────────────────┘ │
 │  ┌─────────────────────────────────────────────────────────────┐ │
 │  │  Intelligent Routing Layer                                  │ │
-│  │  ● Routing LLM (llama3.2:1b / o1-mini)                    │ │
+│  │  ● Routing LLM (gemma4:e4b minimum / o1-mini)              │ │
 │  │  ● Redis-based routing instructions                        │ │
 │  │  ● Request classification (programming, analysis, chat)    │ │
 │  │  ● Model selection hierarchy (request → key → user → org)  │ │
@@ -111,7 +111,7 @@ WaddleAI is a sophisticated LLM proxy server with intelligent routing, memory in
 **Purpose**: Smart model selection based on request type
 
 **Components**:
-- **Routing LLM**: Fast model (llama3.2:1b or o1-mini) for classification
+- **Routing LLM**: Fast model (gemma4:e4b minimum, or o1-mini) for classification
 - **Redis Cache**: Stores routing instructions and decisions
 - **Classification Engine**: Analyzes requests to determine type
 - **Model Selection Hierarchy**:

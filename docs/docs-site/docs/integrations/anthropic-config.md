@@ -400,7 +400,7 @@ Route requests to Anthropic Claude models based on these rules:
 requests.post(
     "https://mgmt.waddleai.com/api/routing/instructions",
     headers={"Authorization": f"Bearer {admin_token}"},
-    json={"instructions": routing_instructions, "routing_llm": "llama3.2:1b"},
+    json={"instructions": routing_instructions, "routing_llm": "gemma4:e4b"},
 )
 ```
 

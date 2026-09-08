@@ -536,7 +536,7 @@ requests.post(
     headers={"Authorization": f"Bearer {admin_token}"},
     json={
         "instructions": routing_instructions,
-        "routing_llm": "llama3.2:1b"
+        "routing_llm": "gemma4:e4b"
     }
 )
 ```

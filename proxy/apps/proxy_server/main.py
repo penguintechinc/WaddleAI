@@ -748,7 +748,7 @@ class ProxyServer:
 
         # RoutingEngine (§7): built once here, alongside the token limiter's
         # valkey client, so it shares the same cache/sticky-escalation store.
-        # classifier_client wires the real stage-2 guard model (gemma4:e2b,
+        # classifier_client wires the real stage-2 guard model (gemma4:e4b,
         # §2.3) through the same LLMConnectionManager used for provider
         # dispatch -- heuristics + explicit signals still resolve first
         # (cascade is cheapest-first); a classifier call failure degrades to
