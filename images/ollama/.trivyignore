@@ -124,3 +124,22 @@ CVE-2026-14456
 # first.
 CVE-2026-11822
 CVE-2026-11824
+
+# --- 2026-09-07: util-linux CVE-2026-76642, no fix published ----------------
+# Same DB-drift shape this file has hit before: the release build was green on
+# 2026-08-29 (0d2eb51f) and red on 2026-09-08 (fef15bd1) with no Dockerfile or
+# base-image change between them -- Trivy's vuln DB picked up a freshly
+# published util-linux CVE. Hits the whole util-linux family shipped in the
+# bare debian:trixie-slim base: bsdutils, libblkid1, liblastlog2-2, libmount1,
+# libsmartcols1, libuuid1, mount, util-linux, util-linux-extra.
+#
+# Trivy status "affected" with an EMPTY FixedVersion column against installed
+# 2.41.5-0+deb13u1 (see the build-ollama-image job log for run 34174626336) --
+# Debian security has shipped no patched util-linux, so no rebuild and no
+# version of this Dockerfile resolves it today. Not reachable from this image's
+# workload either: nothing here invokes an external mount helper.
+#
+# Review by 2026-12-07, or whenever `apt-cache policy util-linux` against this
+# runtime-base shows a Candidate newer than Installed, whichever comes first.
+# The weekly re-triage workflow will flag it if a fix lands sooner.
+CVE-2026-76642
