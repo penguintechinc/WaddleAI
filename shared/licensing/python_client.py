@@ -52,7 +52,9 @@ class PenguinTechLicenseClient:
         self.license_key = license_key
         self.product = product
         self.base_url = base_url or "https://license.penguintech.io"
-        self.server_id = None
+        # Populated by validate(); keepalive() needs it. Annotated so assigning
+        # the real id later is not an assignment of str to an inferred None.
+        self.server_id: str | None = None
         self.timeout = timeout
 
         self.session = requests.Session()
@@ -69,9 +71,11 @@ class PenguinTechLicenseClient:
         # block the caller indefinitely. The timeout is passed per-request
         # below, which is the only form requests honours.
 
-        # Feature cache
-        self._feature_cache = {}
-        self._cache_timestamp = None
+        # Feature cache. Explicitly annotated: the empty-dict/None initialisers
+        # otherwise infer as dict[Any, Any] and None, so every later
+        # `self._cache_timestamp = time.time()` reads as assigning float to None.
+        self._feature_cache: dict[str, bool] = {}
+        self._cache_timestamp: float | None = None
         self._cache_ttl = 300  # 5 minutes
 
     @classmethod
@@ -305,7 +309,9 @@ def requires_feature(feature_name: str, client: PenguinTechLicenseClient | None 
     return decorator
 
 
-def initialize_licensing(license_key: str = None, product: str = None) -> dict[str, Any]:
+def initialize_licensing(
+    license_key: str | None = None, product: str | None = None
+) -> dict[str, Any]:
     """Initialize licensing system and validate license.
 
     Args:
@@ -322,13 +328,13 @@ def initialize_licensing(license_key: str = None, product: str = None) -> dict[s
     global _global_client
 
     # Use provided values or environment variables
-    license_key = license_key or os.getenv("LICENSE_KEY")
-    product = product or os.getenv("PRODUCT_NAME")
+    resolved_key = license_key or os.getenv("LICENSE_KEY")
+    resolved_product = product or os.getenv("PRODUCT_NAME")
 
-    if not license_key or not product:
+    if not resolved_key or not resolved_product:
         raise LicenseValidationError("LICENSE_KEY and PRODUCT_NAME are required")
 
-    _global_client = PenguinTechLicenseClient(license_key, product)
+    _global_client = PenguinTechLicenseClient(resolved_key, resolved_product)
     validation = _global_client.validate()
 
     logger.info(f"License valid for {validation['customer']} ({validation['tier']} tier)")
@@ -350,7 +356,7 @@ def check_feature(feature: str) -> bool:
     return client.check_feature(feature)
 
 
-def send_keepalive(usage_data: dict[str, Any] = None) -> bool:
+def send_keepalive(usage_data: dict[str, Any] | None = None) -> bool:
     """Send keepalive using the global client."""
     client = get_client()
     if not client:
