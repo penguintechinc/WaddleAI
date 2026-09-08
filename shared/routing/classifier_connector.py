@@ -92,6 +92,15 @@ class LLMConnectorClassifierClient:
                 model=model,
                 max_tokens=_MAX_TOKENS,
                 temperature=_TEMPERATURE,
+                # Structured output, not reasoning. Gemma 4 thinks by default and
+                # bills those tokens against max_tokens while returning them in
+                # neither `response` nor `thinking`, so a 200-token budget is
+                # consumed silently and the caller gets "". classify() then reads
+                # that as malformed and degrades to tool_type="general" -- every
+                # request routed identically, with no error anywhere. Measured:
+                # gemma4:12b returned 0 chars here until think=False, while
+                # gemma4:e4b happened to fit inside the budget and worked.
+                think=False,
             )
             return response_text
         except Exception as exc:  # pragma: no cover - defensive, provider I/O failure

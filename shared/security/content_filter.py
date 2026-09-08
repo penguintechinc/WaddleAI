@@ -802,6 +802,15 @@ class ContentFilter:
                             "model": self.auditor_model,
                             "stream": False,
                             "messages": messages,
+                            # A guard returns a verdict, not reasoning. Gemma-4-family
+                            # models think by default and those tokens land in neither
+                            # `response` nor `thinking`, so a thinking auditor either
+                            # returns "" (unparseable -> fail-closed) or burns the 10s
+                            # timeout (-> fail-open). tier4_model is operator-
+                            # configurable, so a Gemma 4 guard is reachable config, not
+                            # a hypothetical. Verified a no-op on shieldgemma:2b, which
+                            # has no thinking mode: identical verdict, no error.
+                            "think": False,
                         },
                         timeout=aiohttp.ClientTimeout(total=10),
                     ) as resp:
