@@ -82,6 +82,11 @@ class FakeRow:
     source's own ``hasattr(deployment, "namespace")`` checks.
     """
 
+    # Annotation only (no runtime effect on hasattr/dynamic attrs below) --
+    # every row reaching FakeDB._insert() is given an id; documents that
+    # invariant for row.id access sites (e.g. FakeDB._Set.delete()).
+    id: int
+
     def __init__(self, **fields: Any) -> None:
         """Store every keyword argument as a plain instance attribute."""
         self.__dict__.update(fields)
@@ -97,7 +102,7 @@ class _Field:
     def __eq__(self, other: object) -> "_Query":  # type: ignore[override]
         return _Query(self.table_name, lambda row: getattr(row, self.field_name, None) == other)
 
-    def __gt__(self, other: object) -> "_Query":
+    def __gt__(self, other: int) -> "_Query":
         return _Query(
             self.table_name, lambda row: (getattr(row, self.field_name, None) or 0) > other
         )
@@ -287,20 +292,27 @@ def _http_client_mock(*, get=None, post=None, delete=None, side_effect=None) -> 
 
     Matches the mocking idiom already used in test_ollama_routes.py: patch
     ``ollama_manager.httpx.Client`` to return this, and the context value
-    (``__enter__.return_value``) exposes ``.get``/``.post``/``.delete``.
+    (``__enter__.return_value``) exposes ``.get``/``.post``/``.request``.
+
+    ``delete=`` wires ``.request`` rather than ``.delete``: Ollama's
+    ``/api/delete`` needs a request body, and ``httpx.Client.delete()`` takes no
+    ``json`` argument, so the manager issues it through ``client.request("DELETE",
+    ...)``. Mocking ``.delete`` instead would make this suite pass against a call
+    that raises ``TypeError`` in production -- which is exactly what it did until
+    the signature mismatch was caught.
     """
     client = MagicMock()
     ctx = client.__enter__.return_value
     if side_effect is not None:
         ctx.get.side_effect = side_effect
         ctx.post.side_effect = side_effect
-        ctx.delete.side_effect = side_effect
+        ctx.request.side_effect = side_effect
     if get is not None:
         ctx.get.return_value = get
     if post is not None:
         ctx.post.return_value = post
     if delete is not None:
-        ctx.delete.return_value = delete
+        ctx.request.return_value = delete
     return client
 
 
@@ -1163,6 +1175,14 @@ def test_remove_model_success_deletes_row(manager, db):
 
     assert result is True
     assert db._tables["ollama_models"] == {}
+    # Pins the call shape, not just the outcome: httpx.Client.delete() accepts no
+    # `json` kwarg, so a revert to client.delete(json=...) would raise TypeError
+    # in production while a return-value-only assertion stayed green.
+    ctx = mock_client.__enter__.return_value
+    ctx.request.assert_called_once()
+    assert ctx.request.call_args.args[0] == "DELETE"
+    assert ctx.request.call_args.kwargs["json"] == {"name": "llama3.2"}
+    ctx.delete.assert_not_called()
 
 
 def test_remove_model_non_200_returns_false(manager, db):

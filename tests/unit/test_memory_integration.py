@@ -144,7 +144,11 @@ def _mem0_store(client: FakeMem0Client | None = None) -> Mem0MemoryStore:
     store.api_key = None
     store.org_id = None
     store.config = {}
-    store.client = client if client is not None else FakeMem0Client()
+    # Mem0MemoryStore.__init__ sets `self.client = None` with no annotation, so
+    # mypy infers the attribute's type as the literal `None` -- annotate the
+    # value explicitly (Any) so assigning our FakeMem0Client stand-in type-checks.
+    client_value: Any = client if client is not None else FakeMem0Client()
+    store.client = client_value
     return store
 
 

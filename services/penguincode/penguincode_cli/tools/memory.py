@@ -10,7 +10,7 @@ from penguincode_cli.config.settings import MemoryConfig
 class MemoryManager:
     """Manages persistent memory using mem0 open-source."""
 
-    def __init__(self, config: MemoryConfig, ollama_url: str, llm_model: str = "llama3.2:3b"):
+    def __init__(self, config: MemoryConfig, ollama_url: str, llm_model: str = "gemma4:e4b"):
         """
         Initialize memory manager.
 
@@ -226,7 +226,7 @@ class MemoryManager:
 
 
 # Utility function for creating memory manager from settings
-def create_memory_manager(config: MemoryConfig, ollama_url: str, llm_model: str = "llama3.2:3b") -> MemoryManager:
+def create_memory_manager(config: MemoryConfig, ollama_url: str, llm_model: str = "gemma4:e4b") -> MemoryManager:
     """
     Create a MemoryManager instance.
 

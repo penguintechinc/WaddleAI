@@ -73,7 +73,7 @@ penguincode setup
 This command:
 1. Creates config directories at `~/.config/penguincode/`
 2. Checks Ollama connectivity
-3. Pulls default models (llama3.2:3b, qwen2.5-coder:7b, nomic-embed-text)
+3. Pulls default models (gemma4:e4b, qwen2.5-coder:7b, nomic-embed-text)
 4. Creates `.penguincode/` directory in your project
 
 **Options:**
@@ -89,11 +89,12 @@ penguincode setup --ollama-url http://remote:11434  # Custom Ollama URL
 
 ```bash
 # Required models
-ollama pull llama3.2:3b          # Research, orchestration (2GB)
+ollama pull gemma4:e4b          # Research, orchestration -- default (2GB)
 ollama pull qwen2.5-coder:7b     # Code execution (4.7GB)
 ollama pull nomic-embed-text     # Required for docs RAG (274MB)
 
 # Optional additional models
+ollama pull gemma4:12b           # Recommended for complex ops like coding
 ollama pull deepseek-coder:6.7b  # Planning, debugging (3.8GB)
 ollama pull codellama:7b         # Code review (3.8GB)
 ollama pull mistral:7b           # Documentation (4.1GB)
@@ -102,7 +103,7 @@ ollama pull mistral:7b           # Documentation (4.1GB)
 **Note**: `nomic-embed-text` is required for documentation RAG indexing. Without it, you'll see "Indexed 0 chunks" errors.
 
 **Model selection by task**:
-- **Chat/Research**: llama3.2:3b (fast, general purpose)
+- **Chat/Research**: gemma4:e4b (fast, general purpose; gemma4:12b recommended for coding)
 - **Code Generation**: qwen2.5-coder:7b (best code quality)
 - **Planning**: deepseek-coder:6.7b (best architecture)
 - **Review**: codellama:7b (code analysis)
@@ -147,12 +148,12 @@ Assign different models for different tasks:
 ```yaml
 models:
   planning: "deepseek-coder:6.7b"      # Complex planning tasks
-  orchestration: "llama3.2:3b"         # Task coordination
-  research: "llama3.2:3b"              # Web research
+  orchestration: "gemma4:e4b"         # Task coordination
+  research: "gemma4:e4b"              # Web research
   execution: "qwen2.5-coder:7b"        # Code generation (complex)
   execution_lite: "qwen2.5-coder:1.5b" # Code generation (simple)
-  exploration: "llama3.2:3b"           # Code exploration
-  exploration_lite: "llama3.2:1b"      # Fast file reads
+  exploration: "gemma4:e4b"           # Code exploration
+  exploration_lite: "gemma4:e4b"      # Fast file reads
 ```
 
 ### Agent Configuration
@@ -165,7 +166,7 @@ agents:
     model: "qwen2.5-coder:7b"
     description: "Code mutations, file writes, bash execution"
   explorer:
-    model: "llama3.2:3b"
+    model: "gemma4:e4b"
     description: "Codebase navigation, file reading"
   reviewer:
     model: "codellama:7b"
@@ -424,7 +425,7 @@ regulators:
 1. **Use lite models for simple tasks**:
    ```yaml
    execution_lite: "qwen2.5-coder:1.5b"  # Instead of 7b
-   exploration_lite: "llama3.2:1b"
+   exploration_lite: "gemma4:e4b"
    ```
 
 2. **Reduce context window**:
@@ -710,8 +711,8 @@ PenguinCode uses a ChatAgent orchestrator that delegates to specialized agents.
 
 | Agent | Model | Purpose | When to Use |
 |-------|-------|---------|-------------|
-| **ChatAgent** | llama3.2:3b | Orchestration, knowledge base | Always (main interface) |
-| **Explorer** | llama3.2:3b | Search, analyze code | Understanding codebase |
+| **ChatAgent** | gemma4:e4b | Orchestration, knowledge base | Always (main interface) |
+| **Explorer** | gemma4:e4b | Search, analyze code | Understanding codebase |
 | **Executor** | qwen2.5-coder:7b | Write/modify code | Implementing features |
 | **Planner** | deepseek-coder:6.7b | Break down complex tasks | Multi-step implementations |
 
@@ -721,16 +722,18 @@ Agents automatically select lite or full models based on task complexity:
 
 | Complexity | Explorer | Executor |
 |------------|----------|----------|
-| Simple | llama3.2:1b | qwen2.5-coder:1.5b |
-| Moderate/Complex | llama3.2:3b | qwen2.5-coder:7b |
+| Simple | gemma4:e4b | qwen2.5-coder:1.5b |
+| Moderate/Complex | gemma4:e4b | qwen2.5-coder:7b |
+
+`gemma4:e4b` is the default at every tier; configure `models.exploration: "gemma4:12b"` if the host can carry it (~8GB VRAM) for more complex ops like coding.
 
 ### Agent Configuration
 
 ```yaml
 models:
-  orchestration: "llama3.2:3b"
-  exploration: "llama3.2:3b"
-  exploration_lite: "llama3.2:1b"
+  orchestration: "gemma4:e4b"
+  exploration: "gemma4:e4b"
+  exploration_lite: "gemma4:e4b"
   execution: "qwen2.5-coder:7b"
   execution_lite: "qwen2.5-coder:1.5b"
   planning: "deepseek-coder:6.7b"
@@ -800,7 +803,8 @@ regulators:
 
 # Option 2: Use smaller models
 models:
-  execution: "llama3.2:3b"  # Instead of 7b
+  execution: "gemma4:e4b"  # Instead of 7b -- e4b is the supported floor,
+                           # nothing below it (no sub-2B model) is supported
 
 # Option 3: Lower context window
 defaults:
@@ -816,7 +820,7 @@ defaults:
 ollama list
 
 # Pull the model
-ollama pull llama3.2:3b
+ollama pull gemma4:e4b
 
 # Or run setup
 penguincode setup

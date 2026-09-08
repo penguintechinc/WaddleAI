@@ -98,7 +98,7 @@ Skills can specify a preferred LLM model in frontmatter. When activated, Penguin
 
 ```yaml
 model: qwen2.5-coder:7b    # Code-execution skills
-model: llama3.2:3b          # Lightweight advisory skills
+model: gemma4:e4b          # Lightweight advisory skills
 # (omit for default model)  # Uses current orchestration model
 ```
 

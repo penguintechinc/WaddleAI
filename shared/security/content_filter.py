@@ -19,7 +19,16 @@ from prometheus_client import Counter
 
 from shared.licensing.gate_cache import LicenseGateCacheEntry
 
-# NER filter — optional; graceful degradation if presidio/transformers unavailable
+# NER filter — optional; graceful degradation if presidio/transformers unavailable.
+# Names are pre-declared with their fallback-compatible types so the `except`
+# branch's `None`/`{}` assignments are plain variable assignments rather than
+# reassignments of an imported class/function object (which mypy otherwise
+# rejects as "Cannot assign to a type").
+NERFilter: type[Any] | None
+NEREntity: type[Any] | None
+ner_analyze: Any | None
+NER_ENTITY_CONFIG: dict[str, Any]
+
 try:
     from shared.security.ner_filter import ENTITY_CONFIG as NER_ENTITY_CONFIG
     from shared.security.ner_filter import NEREntity, NERFilter, ner_analyze
@@ -27,10 +36,10 @@ try:
     _NER_AVAILABLE = True
 except ImportError:
     _NER_AVAILABLE = False
-    NERFilter = None  # type: ignore[assignment,misc]
-    NEREntity = None  # type: ignore[assignment]
-    ner_analyze = None  # type: ignore[assignment]
-    NER_ENTITY_CONFIG: dict = {}  # type: ignore[assignment]
+    NERFilter = None
+    NEREntity = None
+    ner_analyze = None
+    NER_ENTITY_CONFIG = {}
 
 logger = logging.getLogger(__name__)
 
@@ -1390,7 +1399,11 @@ class ContentFilter:
             List of FilterViolation objects with rule_type='ner_entity'
 
         """
-        if self.ner_filter is None:
+        # `ner_analyze` is set alongside `self.ner_filter` in __init__ (both
+        # come from the same successful/failed import+init), so this also
+        # narrows `ner_analyze` for the run_in_executor call below without
+        # changing the existing fail-open early-return behavior.
+        if self.ner_filter is None or ner_analyze is None:
             return []
 
         violations: list[FilterViolation] = []

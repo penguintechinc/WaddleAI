@@ -15,14 +15,14 @@ ollama:
 # Uses tiered approach: lite models for simple tasks, full models for complex
 models:
   planning: "llama3.1:8b"
-  orchestration: "llama3.2:latest"
-  research: "llama3.2:latest"
+  orchestration: "gemma4:e4b"
+  research: "gemma4:e4b"
   # Execution models (code generation, file writes)
   execution: "qwen2.5-coder:7b"       # Complex: refactoring, multi-file, features
   execution_lite: "qwen2.5-coder:7b"  # Simple: single file edits (use 1.5b if installed)
   # Exploration models (code reading, search)
-  exploration: "llama3.2:latest"       # Standard exploration
-  exploration_lite: "llama3.2:latest"  # Quick file reads (use 1b if installed)
+  exploration: "gemma4:e4b"           # Standard exploration
+  exploration_lite: "gemma4:e4b"       # Quick file reads (gemma4:e4b is the supported floor)
 
 # Per-agent model overrides (optimized for RTX 4060 Ti 8GB)
 agents:
@@ -30,7 +30,7 @@ agents:
     model: "qwen2.5-coder:7b"
     description: "Code mutations, file writes, bash execution"
   explorer:
-    model: "llama3.2:latest"
+    model: "gemma4:e4b"
     description: "Codebase navigation, file reading, search"
   reviewer:
     model: "codellama:7b"
@@ -51,7 +51,7 @@ agents:
     model: "llama3.1:8b"
     description: "Documentation generation"
   researcher:
-    model: "llama3.2:latest"
+    model: "gemma4:e4b"
     description: "Web research, summarization"
 
 defaults:

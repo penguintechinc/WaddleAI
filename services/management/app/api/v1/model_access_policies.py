@@ -26,6 +26,7 @@ import os
 from datetime import datetime
 from typing import Any
 
+from penguin_dal.db import DB
 from quart import Blueprint, g, jsonify, request
 
 from shared.auth.rbac import Permission
@@ -49,6 +50,19 @@ _VALID_ACTIONS = frozenset({"reject", "reroute"})
 _UPDATABLE_FIELDS = ("model_pattern", "action", "fallback_model", "reason", "enabled")
 
 _license_client: Any = None
+
+
+def _db() -> DB:
+    """Return the process-wide penguin-dal handle, narrowed away from ``None``.
+
+    ``extensions.db`` is declared ``DB | None`` because it starts unset
+    before ``init_db()`` runs at startup; every route below only executes
+    after that point, so this narrows the type for mypy without adding any
+    reachable failure mode.
+    """
+    if db is None:
+        raise RuntimeError("database not initialized")
+    return db
 
 
 def _get_license_client() -> Any:
@@ -157,7 +171,7 @@ def _visible_query(user_role: str, user_org_id: int | None, user_id: int | None)
     still enforces true tenant isolation for key-scoped rows via an
     explicit per-row lookup.
     """
-    table = db.model_access_policies
+    table = _db().model_access_policies
     if user_role == "admin":
         return table.id > 0
     query = table.scope_type == "global"
@@ -167,18 +181,22 @@ def _visible_query(user_role: str, user_org_id: int | None, user_id: int | None)
     return query
 
 
-def _target_org_for_scope(scope_type: str, scope_ref: str) -> int | None:
+def _target_org_for_scope(scope_type: str, scope_ref: str | None) -> int | None:
     """Resolve the owning org_id for a scope_ref, for write-time tenant isolation."""
+    if scope_ref is None:
+        return None
     if scope_type == "org":
         try:
             return int(scope_ref)
         except (TypeError, ValueError):
             return None
     if scope_type == "user":
-        row = db(db.users.id == scope_ref).select().first()
+        database = _db()
+        row = database(database.users.id == scope_ref).select().first()
         return row.organization_id if row else None
     if scope_type == "key":
-        row = db(db.virtual_keys.id == scope_ref).select().first()
+        database = _db()
+        row = database(database.virtual_keys.id == scope_ref).select().first()
         return row.organization_id if row else None
     return None  # scope_type == "global"
 

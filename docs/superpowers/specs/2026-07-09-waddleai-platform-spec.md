@@ -126,7 +126,7 @@ Mechanically this is the same shape as §2.3's non-commercial class — off by d
 
 ### 2.3 Model weights — dual-default pattern
 
-Model weights may use non-OSI-but-commercial licenses (Gemma ToU, Llama Community) **only for runtime-pulled models, never vendored into images**, and every Gemma-ToU/Llama-Community default MUST have an Apache-2.0 alternative selectable in config ("dual-default pattern"). **Gemma 4 ships under Apache-2.0** — Google's own Gemma 4 terms page routes to the Apache-2.0 license, and the custom Gemma Terms of Use now cover only Gemma 1–3 and their variants (ShieldGemma included — see below). The routing classifier's default therefore moved to Gemma 4 (`gemma4:e4b` — note: **no `2b` tag exists**, only `e2b`/`e4b`/`12b`/`26b`/`31b`/`cloud`; the `e` prefix marks the MatFormer effective-size variants, so the 12B tag is `12b`, never `e12b`. The default was `e2b` until 2026-09-07, when testing found it too weak to classify reliably — **`e4b` is now the supported minimum** for routing and the other quick/light internal roles, with `12b` the recommendation for general-purpose local generation wherever the host can carry it; migration 019 retags existing rows), and the dual-default rationale no longer applies to that role: an already-Apache default doesn't need a second Apache alternative to satisfy the license policy. This is a licensing-policy consequence, not a cosmetic rename.
+Model weights may use non-OSI-but-commercial licenses (Gemma ToU, Llama Community) **only for runtime-pulled models, never vendored into images**, and every Gemma-ToU/Llama-Community default MUST have an Apache-2.0 alternative selectable in config ("dual-default pattern"). **Gemma 4 ships under Apache-2.0** — Google's own Gemma 4 terms page routes to the Apache-2.0 license, and the custom Gemma Terms of Use now cover only Gemma 1–3 and their variants (ShieldGemma included — see below). The routing classifier's default therefore moved to Gemma 4 (`gemma4:e4b` — note: **no `2b` tag exists**, only `e2b`/`e4b`/`12b`/`26b`/`31b`/`cloud`; the `e` prefix marks the MatFormer effective-size variants, so the 12B tag is `12b`, never `e12b`. The default was `e2b` until 2026-09-07, when testing found it too weak to classify reliably — **`e4b` is now the supported minimum** for routing and the other quick/light internal roles, with `12b` the documented recommendation — not a default — for more complex operations such as coding, wherever the host can carry it; migration 019 retags existing rows), and the dual-default rationale no longer applies to that role: an already-Apache default doesn't need a second Apache alternative to satisfy the license policy. This is a licensing-policy consequence, not a cosmetic rename.
 
 | Role | Default | License | Apache-2.0 alternative | Also selectable |
 |---|---|---|---|---|
@@ -1075,7 +1075,7 @@ Commercial music generation is therefore **passthrough only**, to hosted provide
 
 ## 17. Local-Only Profile — On-Device Memory & Caching (Optional)
 
-Flag: `waddleai.local_only_profile`. Off by default. An optional deployment profile for the OSS-developer/homelab persona (§1.2): memory and caching run entirely on the operator's machine, nothing leaves the host. Reference setup: **mem0 + Ollama** (`gemma4:12b` default chat model — general generation, so it follows the §2.3 "`12b` wherever the host can carry it" recommendation; `gemma4:e4b` the accepted lighter alternative for constrained hosts, and the floor: nothing below `e4b`, and in particular no sub-2B model, is offered for chat, routing or memory work — no Gemma 3 anywhere, no PRC-origin models, per §2.2/§2.3) **+ `nomic-embed-text`/`mxbai-embed-large` embeddings + Qdrant in a Docker container the operator runs themselves.**
+Flag: `waddleai.local_only_profile`. Off by default. An optional deployment profile for the OSS-developer/homelab persona (§1.2): memory and caching run entirely on the operator's machine, nothing leaves the host. Reference setup: **mem0 + Ollama** (`gemma4:e4b` default chat model — `e4b` is the shipped default for every role because it is the supported minimum and runs on modest hardware; `gemma4:12b` is the **documented recommendation** for more complex operations, coding especially, opted into via `WADDLEAI_LOCAL_CHAT_MODEL`. `e4b` is also the floor: nothing below it, and in particular no sub-2B model, is offered for chat, routing or memory work — no Gemma 3 anywhere, no PRC-origin models, per §2.2/§2.3) **+ `nomic-embed-text`/`mxbai-embed-large` embeddings + Qdrant in a Docker container the operator runs themselves.**
 
 ### 17.1 Vector-store interface
 
@@ -1099,7 +1099,7 @@ Flag: `waddleai.local_only_profile`. Off by default. An optional deployment prof
 | Collection prefix | `WADDLEAI_LOCAL_COLLECTION_PREFIX` | `waddleai_local` |
 | Ollama host | `OLLAMA_HOST` | `http://localhost:11434` |
 | Embedding model | `WADDLEAI_LOCAL_EMBEDDING_MODEL` | `nomic-embed-text` (768-dim) |
-| Chat model | `WADDLEAI_LOCAL_CHAT_MODEL` | `gemma4:12b` |
+| Chat model | `WADDLEAI_LOCAL_CHAT_MODEL` | `gemma4:e4b` (set `gemma4:12b` for complex work) |
 
 ### 17.4 Acceptance
 

@@ -9,6 +9,7 @@ import sys
 from collections.abc import AsyncGenerator
 from datetime import datetime, timedelta
 from functools import lru_cache
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import jwt as _jwt
@@ -221,8 +222,10 @@ def _make_mock_db() -> MagicMock:
             _table_cache[name] = _DBTable()
         return _table_cache[name]
 
-    # Bind the custom getattr
-    type(mock_db).__getattr__ = _getattr
+    # Bind the custom getattr -- MagicMock's class is erased to Any first
+    # since mypy treats direct dunder assignment on `type(instance)` as
+    # reassigning a method, not a class attribute.
+    cast(Any, type(mock_db)).__getattr__ = _getattr
 
     return mock_db
 
@@ -411,7 +414,10 @@ def make_token(
         role_enum = Role(role)
     except ValueError:
         role_enum = Role.USER
-    permissions = {p.value for p in ROLE_PERMISSIONS.get(role_enum, set())}
+    # UserContext.permissions is `set[Permission]`; downstream
+    # user_context_to_claims() extracts `.value` from each member itself, so
+    # pass the enums through unconverted rather than pre-stringifying here.
+    permissions = ROLE_PERMISSIONS.get(role_enum, set())
     user_context = UserContext(
         user_id=user_id,
         username=username,

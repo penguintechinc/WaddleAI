@@ -21,12 +21,12 @@ ollama:
 # Model Configuration
 models:
   planning: "${PENGUINCODE_MODEL_PLANNING:-deepseek-coder:6.7b}"
-  orchestration: "${PENGUINCODE_MODEL_ORCHESTRATION:-llama3.2:3b}"
-  research: "${PENGUINCODE_MODEL_RESEARCH:-llama3.2:3b}"
+  orchestration: "${PENGUINCODE_MODEL_ORCHESTRATION:-gemma4:e4b}"
+  research: "${PENGUINCODE_MODEL_RESEARCH:-gemma4:e4b}"
   execution: "${PENGUINCODE_MODEL_EXECUTION:-qwen2.5-coder:7b}"
   execution_lite: "${PENGUINCODE_MODEL_EXECUTION_LITE:-qwen2.5-coder:7b}"
-  exploration: "${PENGUINCODE_MODEL_EXPLORATION:-llama3.2:3b}"
-  exploration_lite: "${PENGUINCODE_MODEL_EXPLORATION_LITE:-llama3.2:3b}"
+  exploration: "${PENGUINCODE_MODEL_EXPLORATION:-gemma4:e4b}"
+  exploration_lite: "${PENGUINCODE_MODEL_EXPLORATION_LITE:-gemma4:e4b}"
 
 # Per-Agent Model Overrides
 agents:
@@ -34,7 +34,7 @@ agents:
     model: "${PENGUINCODE_AGENT_EXECUTOR:-qwen2.5-coder:7b}"
     description: "Code mutations, file writes, bash execution"
   explorer:
-    model: "${PENGUINCODE_AGENT_EXPLORER:-llama3.2:3b}"
+    model: "${PENGUINCODE_AGENT_EXPLORER:-gemma4:e4b}"
     description: "Codebase navigation, file reading, search"
   reviewer:
     model: "${PENGUINCODE_AGENT_REVIEWER:-codellama:7b}"
@@ -55,7 +55,7 @@ agents:
     model: "${PENGUINCODE_AGENT_DOCS:-mistral:7b}"
     description: "Documentation generation"
   researcher:
-    model: "${PENGUINCODE_AGENT_RESEARCHER:-llama3.2:3b}"
+    model: "${PENGUINCODE_AGENT_RESEARCHER:-gemma4:e4b}"
     description: "Web research, summarization"
 
 # Default Parameters

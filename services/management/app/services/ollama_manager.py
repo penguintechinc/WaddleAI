@@ -260,7 +260,12 @@ class OllamaDeploymentManager(InferenceFleetBackend):
 
     def _generate_docker_config(self, config: OllamaDeploymentConfig) -> dict[str, Any]:
         """Generate Docker configuration for deployment."""
-        service_config = {
+        # Explicit dict[str, Any]: the literal's own value types (str,
+        # list[str], nested dict) join to `Collection[str]` under inference,
+        # which then rejects the nested `["deploy"]["resources"]["limits"]`
+        # indexing added below -- same values, just an annotation mypy can
+        # index through.
+        service_config: dict[str, Any] = {
             "image": "ollama/ollama:latest",
             "container_name": f"waddleai-ollama-{config.name}",
             "ports": [f"{config.port}:11434"],
@@ -331,7 +336,10 @@ class OllamaDeploymentManager(InferenceFleetBackend):
         _ = parsed.port or 11434
 
         # Deployment manifest
-        k8s_deployment = {
+        # dict[str, Any]: see `_generate_docker_config`'s same annotation --
+        # this literal is indexed several levels deep below to splice in
+        # resource limits.
+        k8s_deployment: dict[str, Any] = {
             "apiVersion": "apps/v1",
             "kind": "Deployment",
             "metadata": {
@@ -1034,8 +1042,12 @@ class OllamaDeploymentManager(InferenceFleetBackend):
 
         try:
             with httpx.Client(timeout=60.0) as client:
-                response = client.delete(
-                    f"{deployment.endpoint_url}/api/delete", json={"name": model_name}
+                # httpx's `delete()` has no `json` parameter (DELETE requests
+                # aren't expected to carry a body); Ollama's `/api/delete`
+                # requires one, so issue it via `request()` -- identical
+                # HTTP method/URL/body, just the typed call path.
+                response = client.request(
+                    "DELETE", f"{deployment.endpoint_url}/api/delete", json={"name": model_name}
                 )
 
                 if response.status_code == 200:

@@ -16,7 +16,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import grpc
 import pytest
@@ -42,10 +42,14 @@ from proxy.apps.proxy_server.grpc_server import (  # noqa: E402
     start_grpc_server,
     waddleai_pb2,
 )
-from shared.agents.security_agent import SecurityDecision  # noqa: E402
-from shared.agents.usage_tracker import UsageAck  # noqa: E402
-from shared.routing.grpc_adapter import RouteEvaluation  # noqa: E402
-from shared.utils.memory_integration import ConversationContext, MemoryEntry  # noqa: E402
+from shared.agents.security_agent import SecurityAgent, SecurityDecision  # noqa: E402
+from shared.agents.usage_tracker import UsageAck, UsageTracker  # noqa: E402
+from shared.routing.grpc_adapter import RouteEvaluation, RoutingEngineRouteEvaluator  # noqa: E402
+from shared.utils.memory_integration import (  # noqa: E402
+    ConversationContext,
+    MemoryEntry,
+    WaddleAIMemoryManager,
+)
 
 # ---------------------------------------------------------------------------
 # Hand-written fakes (no spec-less MagicMock)
@@ -207,6 +211,31 @@ class FakeMemoryManager:
         return self.context_result
 
 
+# ServerComponents' fields are typed against the concrete production classes
+# (no Protocol exists to type these hand-written fakes against structurally),
+# so each fake is cast at the ServerComponents() call boundary below.
+
+
+def _as_routing_agent(fake: FakeRoutingAgent) -> RoutingEngineRouteEvaluator:
+    """Cast: FakeRoutingAgent structurally stands in for RoutingEngineRouteEvaluator."""
+    return cast(RoutingEngineRouteEvaluator, fake)
+
+
+def _as_security_agent(fake: FakeSecurityAgent) -> SecurityAgent:
+    """Cast: FakeSecurityAgent structurally stands in for SecurityAgent."""
+    return cast(SecurityAgent, fake)
+
+
+def _as_usage_tracker(fake: FakeUsageTracker) -> UsageTracker:
+    """Cast: FakeUsageTracker structurally stands in for UsageTracker."""
+    return cast(UsageTracker, fake)
+
+
+def _as_memory_manager(fake: FakeMemoryManager) -> WaddleAIMemoryManager:
+    """Cast: FakeMemoryManager structurally stands in for WaddleAIMemoryManager."""
+    return cast(WaddleAIMemoryManager, fake)
+
+
 class _BareMemoryEntry:
     """Object with none of MemoryEntry's optional attributes -- exercises hasattr fallbacks."""
 
@@ -346,7 +375,7 @@ class TestEvaluateRoute:
                 reasoning="complex prompt",
             )
         )
-        servicer = WaddleAIServiceServicer(ServerComponents(routing_agent=agent))
+        servicer = WaddleAIServiceServicer(ServerComponents(routing_agent=_as_routing_agent(agent)))
         ctx = FakeServicerContext()
         request = waddleai_pb2.RouteRequest(
             api_version="v1", prompt="explain quantum computing", tool_type="general"
@@ -362,7 +391,7 @@ class TestEvaluateRoute:
     def test_internal_error_sets_status_and_empty_response(self) -> None:
         """Agent exception -> INTERNAL status and an empty RouteResponse."""
         agent = FakeRoutingAgent(exc=RuntimeError("engine down"))
-        servicer = WaddleAIServiceServicer(ServerComponents(routing_agent=agent))
+        servicer = WaddleAIServiceServicer(ServerComponents(routing_agent=_as_routing_agent(agent)))
         ctx = FakeServicerContext()
 
         response = servicer.EvaluateRoute(
@@ -370,6 +399,7 @@ class TestEvaluateRoute:
         )
 
         assert ctx.code == grpc.StatusCode.INTERNAL
+        assert ctx.details is not None
         assert "engine down" in ctx.details
         assert response.recommended_model == ""
 
@@ -406,7 +436,9 @@ class TestEvaluateSecurity:
                 matched_patterns=["ignore previous instructions"],
             )
         )
-        servicer = WaddleAIServiceServicer(ServerComponents(security_agent=agent))
+        servicer = WaddleAIServiceServicer(
+            ServerComponents(security_agent=_as_security_agent(agent))
+        )
         ctx = FakeServicerContext()
         request = waddleai_pb2.SecurityRequest(
             api_version="v1", raw_command="rm -rf /", tool_type="bash"
@@ -431,7 +463,9 @@ class TestEvaluateSecurity:
                 matched_patterns=[],
             )
         )
-        servicer = WaddleAIServiceServicer(ServerComponents(security_agent=agent))
+        servicer = WaddleAIServiceServicer(
+            ServerComponents(security_agent=_as_security_agent(agent))
+        )
         ctx = FakeServicerContext()
 
         response = servicer.EvaluateSecurity(
@@ -452,7 +486,9 @@ class TestEvaluateSecurity:
                 matched_patterns=[],
             )
         )
-        servicer = WaddleAIServiceServicer(ServerComponents(security_agent=agent))
+        servicer = WaddleAIServiceServicer(
+            ServerComponents(security_agent=_as_security_agent(agent))
+        )
         ctx = FakeServicerContext()
 
         servicer.EvaluateSecurity(
@@ -473,7 +509,9 @@ class TestEvaluateSecurity:
                 matched_patterns=[],
             )
         )
-        servicer = WaddleAIServiceServicer(ServerComponents(security_agent=agent))
+        servicer = WaddleAIServiceServicer(
+            ServerComponents(security_agent=_as_security_agent(agent))
+        )
         ctx = FakeServicerContext()
 
         servicer.EvaluateSecurity(
@@ -486,7 +524,9 @@ class TestEvaluateSecurity:
     def test_internal_error_sets_status_and_empty_response(self) -> None:
         """Agent exception -> INTERNAL status and an empty SecurityResponse."""
         agent = FakeSecurityAgent(exc=ValueError("scanner unavailable"))
-        servicer = WaddleAIServiceServicer(ServerComponents(security_agent=agent))
+        servicer = WaddleAIServiceServicer(
+            ServerComponents(security_agent=_as_security_agent(agent))
+        )
         ctx = FakeServicerContext()
 
         response = servicer.EvaluateSecurity(
@@ -494,6 +534,7 @@ class TestEvaluateSecurity:
         )
 
         assert ctx.code == grpc.StatusCode.INTERNAL
+        assert ctx.details is not None
         assert "scanner unavailable" in ctx.details
         assert response.safe is False
 
@@ -521,7 +562,7 @@ class TestStoreTurn:
     def test_persists_and_returns_ack(self) -> None:
         """Success path stores the turn and echoes success=True; defaults model/provider."""
         mgr = FakeMemoryManager(store_turn_result=True)
-        servicer = WaddleAIServiceServicer(ServerComponents(memory_manager=mgr))
+        servicer = WaddleAIServiceServicer(ServerComponents(memory_manager=_as_memory_manager(mgr)))
         ctx = FakeServicerContext()
         request = waddleai_pb2.StoreTurnRequest(
             api_version="v1",
@@ -546,7 +587,7 @@ class TestStoreTurn:
     def test_empty_session_id_becomes_none(self) -> None:
         """Empty session_id string is normalised to None before delegating."""
         mgr = FakeMemoryManager(store_turn_result=True)
-        servicer = WaddleAIServiceServicer(ServerComponents(memory_manager=mgr))
+        servicer = WaddleAIServiceServicer(ServerComponents(memory_manager=_as_memory_manager(mgr)))
         ctx = FakeServicerContext()
 
         servicer.StoreTurn(
@@ -558,7 +599,7 @@ class TestStoreTurn:
     def test_metadata_setdefault_preserves_explicit_model_key(self) -> None:
         """Explicit metadata['model'] is not overwritten by request.model (setdefault semantics)."""
         mgr = FakeMemoryManager(store_turn_result=True)
-        servicer = WaddleAIServiceServicer(ServerComponents(memory_manager=mgr))
+        servicer = WaddleAIServiceServicer(ServerComponents(memory_manager=_as_memory_manager(mgr)))
         ctx = FakeServicerContext()
         request = waddleai_pb2.StoreTurnRequest(api_version="v1", user_message="hi", model="gpt-4")
         request.metadata["model"] = "already-set"
@@ -570,7 +611,7 @@ class TestStoreTurn:
     def test_manager_returns_false_is_forwarded(self) -> None:
         """Manager returning success=False (not an exception) is forwarded as-is."""
         mgr = FakeMemoryManager(store_turn_result=False)
-        servicer = WaddleAIServiceServicer(ServerComponents(memory_manager=mgr))
+        servicer = WaddleAIServiceServicer(ServerComponents(memory_manager=_as_memory_manager(mgr)))
         ctx = FakeServicerContext()
 
         response = servicer.StoreTurn(
@@ -583,7 +624,7 @@ class TestStoreTurn:
     def test_internal_error_sets_status_and_success_false(self) -> None:
         """Manager exception -> INTERNAL status and success=False."""
         mgr = FakeMemoryManager(store_turn_exc=RuntimeError("db unavailable"))
-        servicer = WaddleAIServiceServicer(ServerComponents(memory_manager=mgr))
+        servicer = WaddleAIServiceServicer(ServerComponents(memory_manager=_as_memory_manager(mgr)))
         ctx = FakeServicerContext()
 
         response = servicer.StoreTurn(
@@ -591,6 +632,7 @@ class TestStoreTurn:
         )
 
         assert ctx.code == grpc.StatusCode.INTERNAL
+        assert ctx.details is not None
         assert "db unavailable" in ctx.details
         assert response.success is False
 
@@ -627,7 +669,7 @@ class TestGetContext:
                 conversation_summary=None,
             )
         )
-        servicer = WaddleAIServiceServicer(ServerComponents(memory_manager=mgr))
+        servicer = WaddleAIServiceServicer(ServerComponents(memory_manager=_as_memory_manager(mgr)))
         ctx = FakeServicerContext()
 
         response = servicer.GetContext(
@@ -648,7 +690,7 @@ class TestGetContext:
                 relevant_memories=[],
             )
         )
-        servicer = WaddleAIServiceServicer(ServerComponents(memory_manager=mgr))
+        servicer = WaddleAIServiceServicer(ServerComponents(memory_manager=_as_memory_manager(mgr)))
         ctx = FakeServicerContext()
 
         servicer.GetContext(waddleai_pb2.GetContextRequest(api_version="v1", limit=0), ctx)
@@ -666,7 +708,7 @@ class TestGetContext:
                 relevant_memories=[],
             )
         )
-        servicer = WaddleAIServiceServicer(ServerComponents(memory_manager=mgr))
+        servicer = WaddleAIServiceServicer(ServerComponents(memory_manager=_as_memory_manager(mgr)))
         ctx = FakeServicerContext()
 
         servicer.GetContext(waddleai_pb2.GetContextRequest(api_version="v1", limit=3), ctx)
@@ -676,12 +718,13 @@ class TestGetContext:
     def test_internal_error_sets_status_and_empty_response(self) -> None:
         """Manager exception -> INTERNAL status and an empty GetContextResponse."""
         mgr = FakeMemoryManager(context_exc=RuntimeError("vector store down"))
-        servicer = WaddleAIServiceServicer(ServerComponents(memory_manager=mgr))
+        servicer = WaddleAIServiceServicer(ServerComponents(memory_manager=_as_memory_manager(mgr)))
         ctx = FakeServicerContext()
 
         response = servicer.GetContext(waddleai_pb2.GetContextRequest(api_version="v1"), ctx)
 
         assert ctx.code == grpc.StatusCode.INTERNAL
+        assert ctx.details is not None
         assert "vector store down" in ctx.details
         assert list(response.memories) == []
 
@@ -720,7 +763,7 @@ class TestSearchMemories:
             relevance_score=0.88,
         )
         mgr = FakeMemoryManager(memory_store=FakeMemoryStore(results=[entry]))
-        servicer = WaddleAIServiceServicer(ServerComponents(memory_manager=mgr))
+        servicer = WaddleAIServiceServicer(ServerComponents(memory_manager=_as_memory_manager(mgr)))
         ctx = FakeServicerContext()
 
         response = servicer.SearchMemories(
@@ -740,7 +783,7 @@ class TestSearchMemories:
         """limit<=0 and threshold<=0.0 fall back to defaults (10, 0.7)."""
         store = FakeMemoryStore(results=[])
         mgr = FakeMemoryManager(memory_store=store)
-        servicer = WaddleAIServiceServicer(ServerComponents(memory_manager=mgr))
+        servicer = WaddleAIServiceServicer(ServerComponents(memory_manager=_as_memory_manager(mgr)))
         ctx = FakeServicerContext()
 
         servicer.SearchMemories(
@@ -754,7 +797,7 @@ class TestSearchMemories:
         """Positive limit/threshold values are forwarded unchanged."""
         store = FakeMemoryStore(results=[])
         mgr = FakeMemoryManager(memory_store=store)
-        servicer = WaddleAIServiceServicer(ServerComponents(memory_manager=mgr))
+        servicer = WaddleAIServiceServicer(ServerComponents(memory_manager=_as_memory_manager(mgr)))
         ctx = FakeServicerContext()
 
         servicer.SearchMemories(
@@ -771,7 +814,7 @@ class TestSearchMemories:
         """Store exception -> INTERNAL status and an empty SearchMemoriesResponse."""
         store = FakeMemoryStore(exc=RuntimeError("index corrupt"))
         mgr = FakeMemoryManager(memory_store=store)
-        servicer = WaddleAIServiceServicer(ServerComponents(memory_manager=mgr))
+        servicer = WaddleAIServiceServicer(ServerComponents(memory_manager=_as_memory_manager(mgr)))
         ctx = FakeServicerContext()
 
         response = servicer.SearchMemories(
@@ -779,6 +822,7 @@ class TestSearchMemories:
         )
 
         assert ctx.code == grpc.StatusCode.INTERNAL
+        assert ctx.details is not None
         assert "index corrupt" in ctx.details
         assert list(response.results) == []
 
@@ -809,7 +853,9 @@ class TestReportUsage:
         tracker = FakeUsageTracker(
             result=UsageAck(accepted=True, quota_exceeded=False, message="recorded")
         )
-        servicer = WaddleAIServiceServicer(ServerComponents(usage_tracker=tracker))
+        servicer = WaddleAIServiceServicer(
+            ServerComponents(usage_tracker=_as_usage_tracker(tracker))
+        )
         ctx = FakeServicerContext()
         request = waddleai_pb2.UsageReport(
             api_version="v1",
@@ -839,7 +885,9 @@ class TestReportUsage:
         tracker = FakeUsageTracker(
             result=UsageAck(accepted=True, quota_exceeded=False, message="ok")
         )
-        servicer = WaddleAIServiceServicer(ServerComponents(usage_tracker=tracker))
+        servicer = WaddleAIServiceServicer(
+            ServerComponents(usage_tracker=_as_usage_tracker(tracker))
+        )
         ctx = FakeServicerContext()
 
         servicer.ReportUsage(
@@ -853,7 +901,9 @@ class TestReportUsage:
         tracker = FakeUsageTracker(
             result=UsageAck(accepted=True, quota_exceeded=False, message="ok")
         )
-        servicer = WaddleAIServiceServicer(ServerComponents(usage_tracker=tracker))
+        servicer = WaddleAIServiceServicer(
+            ServerComponents(usage_tracker=_as_usage_tracker(tracker))
+        )
         ctx = FakeServicerContext()
 
         servicer.ReportUsage(waddleai_pb2.UsageReport(api_version="v1", user_id="u1"), ctx)
@@ -868,7 +918,9 @@ class TestReportUsage:
         tracker = FakeUsageTracker(
             result=UsageAck(accepted=False, quota_exceeded=True, message="quota exceeded")
         )
-        servicer = WaddleAIServiceServicer(ServerComponents(usage_tracker=tracker))
+        servicer = WaddleAIServiceServicer(
+            ServerComponents(usage_tracker=_as_usage_tracker(tracker))
+        )
         ctx = FakeServicerContext()
 
         response = servicer.ReportUsage(
@@ -881,7 +933,9 @@ class TestReportUsage:
     def test_internal_error_sets_status_and_rejected_ack(self) -> None:
         """Tracker exception -> INTERNAL status and an ack embedding the error message."""
         tracker = FakeUsageTracker(exc=RuntimeError("quota service down"))
-        servicer = WaddleAIServiceServicer(ServerComponents(usage_tracker=tracker))
+        servicer = WaddleAIServiceServicer(
+            ServerComponents(usage_tracker=_as_usage_tracker(tracker))
+        )
         ctx = FakeServicerContext()
 
         response = servicer.ReportUsage(
@@ -960,7 +1014,7 @@ class TestMemoryEntriesToProto:
             content="text",
             metadata={},
             embedding=None,
-            created_at="2026-01-01T00:00:00",
+            created_at="2026-01-01T00:00:00",  # type: ignore[arg-type]
         )
 
         proto_entries = _memory_entries_to_proto([entry])

@@ -136,7 +136,7 @@ curl -fsSL https://ollama.com/install.sh | sh
 
 # Pull models
 ollama pull gemma4:e4b    # Routing (minimum supported)
-ollama pull gemma4:12b    # General purpose
+ollama pull gemma4:12b    # Recommended for complex ops / coding (optional)
 ```
 
 In Management Portal:

@@ -45,13 +45,13 @@ spec:
         - name: PENGUINCODE_MODEL_PLANNING
           value: "deepseek-coder:6.7b"
         - name: PENGUINCODE_MODEL_ORCHESTRATION
-          value: "llama3.2:3b"
+          value: "gemma4:e4b"
         - name: PENGUINCODE_MODEL_EXECUTION
           value: "qwen2.5-coder:7b"
         - name: PENGUINCODE_MODEL_EXPLORATION
-          value: "llama3.2:3b"
+          value: "gemma4:e4b"
         - name: PENGUINCODE_MODEL_RESEARCH
-          value: "llama3.2:3b"
+          value: "gemma4:e4b"
         - name: PENGUINCODE_MEMORY_ENABLED
           value: "true"
         - name: PENGUINCODE_MEMORY_STORE

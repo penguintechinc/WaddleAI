@@ -56,11 +56,20 @@ _SCRATCHPAD_MARKER_RE = re.compile(r"waddleai://scratchpad/([A-Za-z0-9_.\-]+)")
 ConfigResolver = Callable[[Any], Awaitable[Any]]  # user_context -> ProxyMemoryConfig
 
 
-def _org_and_user(user: Any) -> tuple[int | None, int | None]:
-    """Extract (org_id, user_id) from ctx.user, matching the existing stages' convention."""
-    org_id = getattr(user, "organization_id", None) or getattr(user, "tenant_id", None)
-    user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
-    return org_id, user_id
+def _org_and_user(user: Any) -> tuple[int, int] | None:
+    """Extract (org_id, user_id) from ctx.user, or None when either is absent.
+
+    Returns None rather than defaulting a missing org to 0: every memory store
+    below keys its rows by org_id, so coercing an org-less context to 0 would
+    file that request's scratchpad and summary state under whatever real tenant
+    holds id 0. Callers skip the stage on None -- an org-less request simply
+    gets no memory, which is what a None-keyed lookup already found anyway.
+    """
+    org_id_raw = getattr(user, "organization_id", None) or getattr(user, "tenant_id", None)
+    user_id_raw = getattr(user, "user_id", None) or getattr(user, "id", None)
+    if org_id_raw is None or user_id_raw is None:
+        return None
+    return int(org_id_raw), int(user_id_raw)
 
 
 async def _async_regex_sub(
@@ -117,7 +126,11 @@ class ScratchpadStage(Stage):
         if not config.scratchpad_substitution:
             return ctx
 
-        org_id, user_id = _org_and_user(ctx.user)
+        ids = _org_and_user(ctx.user)
+        if ids is None:
+            logger.debug("ScratchpadStage: no org/user on context, skipping substitution")
+            return ctx
+        org_id, user_id = ids
         session_id = ctx.session_id
         substitutions = 0
 
@@ -209,7 +222,11 @@ class SummarizationStage(Stage):
         if not config.summarization_enabled:
             return ctx
 
-        org_id, user_id = _org_and_user(ctx.user)
+        ids = _org_and_user(ctx.user)
+        if ids is None:
+            logger.debug("SummarizationStage: no org/user on context, skipping")
+            return ctx
+        org_id, user_id = ids
         model = ctx.model or "gpt-4"
 
         system_msgs = [m for m in ctx.messages if m.get("role") == "system"]
@@ -289,7 +306,11 @@ class DedupStage(Stage):
         if not config.schema_dedup:
             return ctx
 
-        org_id, user_id = _org_and_user(ctx.user)
+        ids = _org_and_user(ctx.user)
+        if ids is None:
+            logger.debug("DedupStage: no org/user on context, skipping")
+            return ctx
+        org_id, user_id = ids
         model = ctx.model or "gpt-4"
 
         if ctx.session_id:

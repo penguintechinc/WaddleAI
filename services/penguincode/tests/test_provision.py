@@ -32,7 +32,7 @@ class TestConfigStoreCRUD:
         models = await store.list_models()
         names = {m["name"] for m in models}
         assert "codellama:7b" in names
-        assert "llama3.2:3b" in names
+        assert "gemma4:e4b" in names
         assert "nomic-embed-text" in names
 
     async def test_upsert_and_get_model(self, store):

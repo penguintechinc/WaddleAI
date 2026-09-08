@@ -12,7 +12,8 @@ The following Ollama models natively support tool calling through JSON function 
 
 | Model | Size Variants | Support Level | Notes |
 |-------|--------------|---------------|-------|
-| **llama3.2** | 1B, 3B, 8B, 11B | Full | Recommended base model. Excellent instruction following. |
+| **gemma4** | e2b, e4b, 12b, 26b, 31b | Full | **Recommended base model.** `e4b` is the supported floor and the default for every role; `12b` recommended for complex ops like coding. `e2b` is below the floor -- do not use. |
+| **llama3.2** | 1B, 3B, 8B, 11B | Full | Tool calling works, but no longer the recommended base: the 1B/3B variants sit below the `gemma4:e4b` floor. |
 | **qwen2.5-coder** | 1.5B, 7B, 32B | Full | Code-aware. Default execution model in PenguinCode. |
 | **mistral** | 7B, 8B | Full | Fast inference, reliable tool use. |
 | **neural-chat** | 7B | Full | Conversation-optimized with tools. |
