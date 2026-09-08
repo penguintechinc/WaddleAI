@@ -94,6 +94,44 @@ Serving all four concurrently is an **xx80/xx90-class** requirement — an RTX
 e4b-only baseline comfortably; they cannot hold a 12B alongside it with room
 for context to grow.
 
+### Capacity and throughput are different requirements
+
+**VRAM answers "do the weights fit". It does not answer "can this GPU serve
+them".** Size for both, because they fail differently:
+
+| Axis | Set by | What runs out |
+|---|---|---|
+| **Capacity** | VRAM | Models get evicted, or refuse to load |
+| **Throughput** | Memory bandwidth, then compute | Everything still works, just slowly |
+
+A 24 GB card built on a mid-range die can *hold* eight models and still serve
+them poorly — generation speed follows memory bandwidth, not capacity. The
+inverse fails too: a fast 8 GB card has the throughput and cannot hold the
+stack. Neither number alone is a requirement.
+
+Measured on a 16 GB mobile RTX 3080, Q4_K_M:
+
+| Model | Generation | Prompt eval | Cold load |
+|---|---|---|---|
+| `gemma4:e4b` | 86.8 tok/s | 192.7 tok/s | 5.76 s |
+| `gemma4:12b` | 45.9 tok/s | 169.2 tok/s | 4.88 s |
+
+Note what scales and what does not. Generation is **1.9× slower** on the larger
+model while prompt evaluation is only **1.14× slower** — token generation is
+sequential and bandwidth-bound, so it tracks model size; prompt processing is
+parallel and compute-bound, so it largely does not. A card chosen for capacity
+alone, with modest bandwidth, gets the worst of that trade.
+
+**Concurrency is a third thing again.** Models resident on one GPU share its
+SMs and bandwidth. Loading more models does not add throughput — it divides the
+same throughput across more consumers, and each additional concurrent request
+lengthens the queue for all of them. Resident model count is a capacity
+question; requests per second is a throughput question.
+
+**Cold load is ~5 s per model.** That is the real cost of the eviction described
+above: every evict-and-reload cycle spends roughly five seconds before a single
+token is produced. A thrashing stack is not marginally slower, it is unusable.
+
 | Serving | VRAM | Example cards | Notes |
 |---|---|---|---|
 | e4b only | 8 GB min / 12 GB rec | RTX 4060 / RTX 3060 12GB | See table above |
