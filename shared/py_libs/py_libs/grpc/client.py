@@ -153,7 +153,11 @@ class GrpcClient:
             >>>     )
 
         """
-        backoff_ms = self.options.initial_backoff_ms
+        # float, not int: backoff_multiplier is a float, so every iteration past the
+        # first widens this value anyway -- declaring it float from the start avoids
+        # a narrower-than-actual inferred type with no change in runtime behaviour
+        # (time.sleep/min/comparisons all accept int and float interchangeably).
+        backoff_ms: float = self.options.initial_backoff_ms
         last_exception = None
 
         for attempt in range(self.options.max_retries):

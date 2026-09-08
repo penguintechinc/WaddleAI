@@ -158,7 +158,7 @@ def _signature_from_json_schema(schema: dict[str, Any]) -> inspect.Signature:
 
     parameters = []
     for name, prop in properties.items():
-        annotation = _JSON_SCHEMA_TYPES.get((prop or {}).get("type"), Any)
+        annotation = _JSON_SCHEMA_TYPES.get((prop or {}).get("type") or "", Any)
         if name in required:
             parameters.append(
                 inspect.Parameter(

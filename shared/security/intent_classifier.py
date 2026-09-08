@@ -54,7 +54,7 @@ class IntentClassifier:
         self,
         ollama_base_url: str = "http://localhost:11434",
         default_model: str = "shieldgemma:2b",
-        http_post: Callable[[str, dict, float], Awaitable[str]] | None = None,
+        http_post: Callable[[str, list[dict[str, str]], float], Awaitable[str]] | None = None,
     ) -> None:
         """Wire the Ollama endpoint, default guard model, and an injectable HTTP callable.
 

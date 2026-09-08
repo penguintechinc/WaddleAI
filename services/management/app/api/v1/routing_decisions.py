@@ -20,6 +20,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
+from penguin_dal.db import DB
 from quart import Blueprint, g, jsonify, request
 
 from ...extensions import db
@@ -30,6 +31,19 @@ logger = logging.getLogger(__name__)
 routing_decisions_bp = Blueprint(
     "routing_decisions", __name__, url_prefix="/api/v1/routing/decisions"
 )
+
+
+def _db() -> DB:
+    """Return the process-wide penguin-dal handle, narrowed away from ``None``.
+
+    ``extensions.db`` is declared ``DB | None`` because it starts unset
+    before ``init_db()`` runs at startup; every route below only executes
+    after that point, so this narrows the type for mypy without adding any
+    reachable failure mode.
+    """
+    if db is None:
+        raise RuntimeError("database not initialized")
+    return db
 
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
@@ -57,7 +71,7 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
 
 def _visible_org_filter(user_role: str, user_org_id: int | None):
     """Admin sees every org's traces; everyone else only their own org's."""
-    table = db.routing_decision_traces
+    table = _db().routing_decision_traces
     if user_role == "admin":
         return table.id > 0
     return table.organization_id == user_org_id
@@ -71,9 +85,10 @@ async def get_trace(request_id: str) -> tuple:
     user_org_id = g.user.get("organization_id")
 
     def _fetch() -> Any:
-        rows = db(
+        database = _db()
+        rows = database(
             _visible_org_filter(user_role, user_org_id)
-            & (db.routing_decision_traces.request_id == request_id)
+            & (database.routing_decision_traces.request_id == request_id)
         ).select()
         if len(rows) == 0:
             return None
@@ -136,13 +151,14 @@ async def list_decisions_summary() -> tuple:
     to_ts = _parse_ts(to_param)
 
     def _fetch() -> list[Any]:
-        table = db.routing_decision_traces
+        database = _db()
+        table = database.routing_decision_traces
         query = table.id > 0 if target_org_id is None else table.organization_id == target_org_id
         if from_ts is not None:
             query &= table.timestamp >= from_ts
         if to_ts is not None:
             query &= table.timestamp < to_ts
-        return db(query).select()
+        return list(database(query).select())
 
     rows = await asyncio.to_thread(_fetch)
 

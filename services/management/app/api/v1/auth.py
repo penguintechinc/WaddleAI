@@ -4,8 +4,10 @@ import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache, wraps
+from typing import Any
 
 from passlib.hash import bcrypt
+from penguin_dal.db import DB
 from quart import g, jsonify, request
 from quart_schema import security_scheme, tag, validate_request, validate_response
 
@@ -16,7 +18,20 @@ from shared.auth.rbac import ROLE_PERMISSIONS, Permission, Role, UserContext
 from ...extensions import db
 from . import api_v1_bp
 
-_BEARER_AUTH = [{"bearerAuth": []}]
+_BEARER_AUTH: list[dict[str, list[str]]] = [{"bearerAuth": []}]
+
+
+def _db() -> DB:
+    """Return the process-wide penguin-dal handle, narrowed away from ``None``.
+
+    ``extensions.db`` is declared ``DB | None`` because it starts unset
+    before ``init_db()`` runs at startup; every route below only executes
+    after that point, so this narrows the type for mypy without adding any
+    reachable failure mode (mirrors the same helper in ``fleet.py``).
+    """
+    if db is None:
+        raise RuntimeError("database not initialized")
+    return db
 
 
 # ---------------------------------------------------------------------------
@@ -153,7 +168,7 @@ def create_token(
         role_enum = Role(role)
     except ValueError:
         role_enum = Role.USER
-    permissions = {p.value for p in ROLE_PERMISSIONS.get(role_enum, set())}
+    permissions: set[Permission] = ROLE_PERMISSIONS.get(role_enum, set())
     user_context = UserContext(
         user_id=user_id,
         username=username,
@@ -185,20 +200,21 @@ def verify_token(token: str) -> dict | None:
         return None
 
 
-def verify_api_key(api_key: str) -> dict:
+def verify_api_key(api_key: str) -> dict[str, Any] | None:
     """Verify API key and return user context, including OIDC scopes.
 
     API keys never carry a JWT `scope` claim (there is no token to decode),
     so scopes are derived from the key owner's current role via
     `_scopes_for_role` -- the same bundle `create_token` would issue them.
     """
+    database = _db()
     # Check virtual_keys table
     # penguin-dal query expression, not a bool comparison
-    enabled_query = db.virtual_keys.enabled == True  # noqa: E712
-    keys = db(enabled_query).select()
+    enabled_query = database.virtual_keys.enabled == True  # noqa: E712
+    keys = database(enabled_query).select()
     for key in keys:
         if bcrypt.verify(api_key, key.key_hash):
-            user = db(db.users.id == key.user_id).select().first()
+            user = database(database.users.id == key.user_id).select().first()
             if user and user.enabled:
                 # Vuln A fix: Validate key's org matches user's org
                 if key.organization_id != user.organization_id:
@@ -305,8 +321,12 @@ async def login(data: LoginRequest):
     if not username or not password:
         return jsonify({"error": "Username and password required"}), 400
 
+    database = _db()
+
     # Find user
-    user = await asyncio.to_thread(lambda: db(db.users.username == username).select().first())
+    user = await asyncio.to_thread(
+        lambda: database(database.users.username == username).select().first()
+    )
 
     if not user:
         return jsonify({"error": "Invalid credentials"}), 401
@@ -322,14 +342,14 @@ async def login(data: LoginRequest):
     remote_addr = request.remote_addr
 
     def _update_login():
-        db(db.users.id == user.id).update(
+        database(database.users.id == user.id).update(
             last_login_at=user.current_login_at,
             current_login_at=datetime.utcnow(),
             last_login_ip=user.current_login_ip,
             current_login_ip=remote_addr,
             login_count=(user.login_count or 0) + 1,
         )
-        db.commit()
+        database.commit()
 
     await asyncio.to_thread(_update_login)
 
@@ -411,14 +431,15 @@ async def verify_auth():
 @validate_response(CurrentUserResponse, 200)
 async def get_current_user():
     """Get current user info."""
+    database = _db()
     user_id = g.user["user_id"]
-    user = await asyncio.to_thread(lambda: db(db.users.id == user_id).select().first())
+    user = await asyncio.to_thread(lambda: database(database.users.id == user_id).select().first())
 
     if not user:
         return jsonify({"error": "User not found"}), 404
 
     org = await asyncio.to_thread(
-        lambda: db(db.organizations.id == user.organization_id).select().first()
+        lambda: database(database.organizations.id == user.organization_id).select().first()
     )
 
     return {
@@ -452,8 +473,9 @@ async def change_password(data: ChangePasswordRequest):
     if len(new_password) < 8:
         return jsonify({"error": "New password must be at least 8 characters"}), 400
 
+    database = _db()
     user_id = g.user["user_id"]
-    user = await asyncio.to_thread(lambda: db(db.users.id == user_id).select().first())
+    user = await asyncio.to_thread(lambda: database(database.users.id == user_id).select().first())
 
     if not user:
         return jsonify({"error": "User not found"}), 404
@@ -464,8 +486,8 @@ async def change_password(data: ChangePasswordRequest):
 
     # Update password
     def _update_password():
-        db(db.users.id == user_id).update(password_hash=bcrypt.hash(new_password))
-        db.commit()
+        database(database.users.id == user_id).update(password_hash=bcrypt.hash(new_password))
+        database.commit()
 
     await asyncio.to_thread(_update_password)
 

@@ -14,6 +14,7 @@ route code would fail loudly instead of silently matching an auto-mock.
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 
 import pytest
 from quart import Quart
@@ -492,9 +493,9 @@ async def test_add_memories_org_scope_allowed_when_flag_on(
 # ---------------------------------------------------------------------------
 
 
-def _entry(**overrides) -> MemoryEntry:
+def _entry(**overrides: Any) -> MemoryEntry:
     """Build a MemoryEntry with sane defaults, overridable per test."""
-    defaults = dict(
+    defaults: dict[str, Any] = dict(
         id="m1",
         user_id=42,
         organization_id=7,

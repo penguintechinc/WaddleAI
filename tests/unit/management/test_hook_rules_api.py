@@ -18,7 +18,10 @@ from tests.unit.management.conftest import make_select_result
 
 
 def _mock_rule_row(
-    rule_id: int = 1, scope_type: str = "org", scope_ref: str = "1", decision: str = "deny"
+    rule_id: int = 1,
+    scope_type: str = "org",
+    scope_ref: str | None = "1",
+    decision: str = "deny",
 ) -> MagicMock:
     """A MagicMock standing in for a db `hook_rules` row."""
     row = MagicMock()
@@ -340,7 +343,7 @@ class TestUpdateDeleteHookRule:
 
 
 def _mock_denylist_row(
-    entry_id: int = 1, scope_type: str = "org", scope_ref: str = "2"
+    entry_id: int = 1, scope_type: str = "org", scope_ref: str | None = "2"
 ) -> MagicMock:
     """A MagicMock standing in for a db `hook_denylist_entries` row."""
     row = MagicMock()

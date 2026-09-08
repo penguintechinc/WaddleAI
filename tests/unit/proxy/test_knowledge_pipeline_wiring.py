@@ -16,6 +16,7 @@ proxy/apps/proxy_server/pipeline/memory_stages.py's module docstring.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -36,6 +37,7 @@ from shared.knowledge.injection_safety import InjectableBlock
 from shared.knowledge.scoping import TrustTier
 from shared.security.content_filter import ContentFilter
 from shared.security.prompt_security import PromptSecurityScanner
+from shared.utils.request_router import LLMRequestRouter
 
 
 @dataclass(slots=True)
@@ -135,7 +137,12 @@ def _build_pipeline(features, retriever, connector) -> ProxyPipeline:
             flag=KNOWLEDGE_INJECT_FLAG,
         ),
         DispatchStage(
-            name="dispatch", router=StubRouter(), connectors={"stub": connector}, flag=None
+            name="dispatch",
+            # StubRouter duck-types LLMRequestRouter's select_provider(...)
+            # signature rather than subclassing it (see its docstring).
+            router=cast(LLMRequestRouter, StubRouter()),
+            connectors={"stub": connector},
+            flag=None,
         ),
         SecurityOutStage(name="security_out", content_filter=content_filter, flag=None),
     ]

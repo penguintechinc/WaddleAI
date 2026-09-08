@@ -11,6 +11,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
+from penguin_dal.db import DB
 from quart import Blueprint, g, jsonify, request
 
 from shared.auth.rbac import Permission
@@ -23,6 +24,19 @@ logger = logging.getLogger(__name__)
 model_aliases_bp = Blueprint("model_aliases", __name__, url_prefix="/api/v1/routing/aliases")
 
 _WRITABLE_FIELDS = ("source_model", "target_model", "target_provider", "enabled")
+
+
+def _db() -> DB:
+    """Return the process-wide penguin-dal handle, narrowed away from ``None``.
+
+    ``extensions.db`` is declared ``DB | None`` because it starts unset
+    before ``init_db()`` runs at startup; every route below only executes
+    after that point, so this narrows the type for mypy without adding any
+    reachable failure mode (mirrors the same helper in ``fleet.py``).
+    """
+    if db is None:
+        raise RuntimeError("database not initialized")
+    return db
 
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
@@ -40,7 +54,7 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
 
 def _visible_query(user_role: str, user_org_id: int | None):
     """Admin sees every alias; everyone else sees global + their own org's aliases."""
-    table = db.model_aliases
+    table = _db().model_aliases
     if user_role == "admin":
         return table.id > 0
     return (table.organization_id == None) | (table.organization_id == user_org_id)  # noqa: E711
@@ -66,10 +80,11 @@ async def list_aliases() -> tuple:
     source_model: str | None = request.args.get("source_model")
 
     def _fetch():
+        database = _db()
         query = _visible_query(user_role, user_org_id)
         if source_model:
-            query &= db.model_aliases.source_model == source_model
-        return db(query).select(orderby=db.model_aliases.id)
+            query &= database.model_aliases.source_model == source_model
+        return database(query).select(orderby=database.model_aliases.id)
 
     rows = await asyncio.to_thread(_fetch)
     entries = [_row_to_dict(r) for r in rows]
@@ -93,9 +108,12 @@ async def get_alias(alias_id: int) -> tuple:
     user_role = g.user.get("role")
     user_org_id = g.user.get("organization_id")
 
+    database = _db()
     row = await asyncio.to_thread(
         lambda: (
-            db(_visible_query(user_role, user_org_id) & (db.model_aliases.id == alias_id))
+            database(
+                _visible_query(user_role, user_org_id) & (database.model_aliases.id == alias_id)
+            )
             .select()
             .first()
         )
@@ -144,10 +162,11 @@ async def create_alias() -> tuple:
         return jsonify({"status": "error", "error": "Access denied for this organization_id"}), 403
 
     def _upsert():
+        database = _db()
         existing = (
-            db(
-                (db.model_aliases.organization_id == organization_id)
-                & (db.model_aliases.source_model == data["source_model"])
+            database(
+                (database.model_aliases.organization_id == organization_id)
+                & (database.model_aliases.source_model == data["source_model"])
             )
             .select()
             .first()
@@ -158,18 +177,18 @@ async def create_alias() -> tuple:
             "enabled": data.get("enabled", True),
         }
         if existing:
-            db(db.model_aliases.id == existing.id).update(**fields)
-            db.commit()
-            return "updated", db(db.model_aliases.id == existing.id).select().first()
+            database(database.model_aliases.id == existing.id).update(**fields)
+            database.commit()
+            return "updated", database(database.model_aliases.id == existing.id).select().first()
 
-        new_id = db.model_aliases.insert(
+        new_id = database.model_aliases.insert(
             organization_id=organization_id,
             source_model=data["source_model"],
             **fields,
             created_at=datetime.utcnow(),
         )
-        db.commit()
-        return "created", db(db.model_aliases.id == new_id).select().first()
+        database.commit()
+        return "created", database(database.model_aliases.id == new_id).select().first()
 
     action, row = await asyncio.to_thread(_upsert)
 
@@ -199,7 +218,8 @@ async def update_alias(alias_id: int) -> tuple:
     update_fields: dict[str, Any] = {f: data[f] for f in _WRITABLE_FIELDS if f in data}
 
     def _update():
-        row = db(db.model_aliases.id == alias_id).select().first()
+        database = _db()
+        row = database(database.model_aliases.id == alias_id).select().first()
         if not row:
             return "not_found", None
         if not _can_write(user_role, user_org_id, row.organization_id):
@@ -207,9 +227,9 @@ async def update_alias(alias_id: int) -> tuple:
         if not update_fields:
             return "no_fields", None
 
-        db(db.model_aliases.id == alias_id).update(**update_fields)
-        db.commit()
-        return "ok", db(db.model_aliases.id == alias_id).select().first()
+        database(database.model_aliases.id == alias_id).update(**update_fields)
+        database.commit()
+        return "ok", database(database.model_aliases.id == alias_id).select().first()
 
     result, row = await asyncio.to_thread(_update)
 
@@ -241,13 +261,14 @@ async def delete_alias(alias_id: int) -> tuple:
     user_org_id = g.user.get("organization_id")
 
     def _delete():
-        row = db(db.model_aliases.id == alias_id).select().first()
+        database = _db()
+        row = database(database.model_aliases.id == alias_id).select().first()
         if not row:
             return "not_found"
         if not _can_write(user_role, user_org_id, row.organization_id):
             return "forbidden"
-        db(db.model_aliases.id == alias_id).delete()
-        db.commit()
+        database(database.model_aliases.id == alias_id).delete()
+        database.commit()
         return "ok"
 
     result = await asyncio.to_thread(_delete)

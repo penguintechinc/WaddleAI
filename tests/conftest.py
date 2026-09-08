@@ -36,7 +36,10 @@ except ImportError:  # pragma: no cover
         _google_pkg = types.ModuleType("google")
         _google_pkg.__path__ = []  # keep it a package so submodules resolve
         sys.modules["google"] = _google_pkg
-    _google_pkg.genai = _mock_genai
+    # setattr, not `_google_pkg.genai = ...`: mypy's ModuleType stub has no
+    # `genai` attribute (it's dynamically created above), and setattr's
+    # string-keyed signature isn't statically checked against it.
+    setattr(_google_pkg, "genai", _mock_genai)  # noqa: B010
 
 from shared.auth.rbac import RBACManager, Role, UserContext
 

@@ -519,15 +519,11 @@ class QdrantRAGStore(RAGStore):
                     query_filter = Filter(must=conditions)
 
             # qdrant-client 1.19.0 (pinned, requirements.txt) removed
-            # QdrantClient.search() in favor of query_points(); this call
-            # already raises AttributeError at runtime with the pinned
-            # version and is caught by the except below (this backend is
-            # unused elsewhere in the codebase). Preserving the existing
-            # call/behavior as-is per this pass's no-behavior-change scope;
-            # a follow-up should migrate to query_points().
-            search_results = cast(Any, client).search(
+            # QdrantClient.search() in favor of query_points(); see
+            # shared/vectorstore/qdrant_backend.py for the same migration.
+            response = client.query_points(
                 collection_name=collection,
-                query_vector=query_embedding,
+                query=query_embedding,
                 limit=limit,
                 score_threshold=min_score,
                 query_filter=query_filter,
@@ -535,11 +531,12 @@ class QdrantRAGStore(RAGStore):
 
             # Convert to SearchResult objects
             results = []
-            for hit in search_results:
+            for hit in response.points:
+                payload = hit.payload or {}
                 doc = Document(
-                    id=hit.payload.get("doc_id", ""),
-                    content=hit.payload.get("content", ""),
-                    metadata=hit.payload.get("metadata", {}),
+                    id=payload.get("doc_id", ""),
+                    content=payload.get("content", ""),
+                    metadata=payload.get("metadata", {}),
                     collection=collection,
                 )
 

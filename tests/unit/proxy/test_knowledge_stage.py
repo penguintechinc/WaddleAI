@@ -124,6 +124,7 @@ class TestTokenBudgetTruncation:
         injected = result.messages[1]["content"]
         assert "content for r1" in injected
         assert "content for r2" not in injected
+        assert result.usage is not None
         assert result.usage["waddleai"]["injected_tokens"] == 1900
 
     @pytest.mark.asyncio
@@ -168,6 +169,7 @@ class TestUsageAccounting:
 
         result = await stage(ctx)
 
+        assert result.usage is not None
         assert result.usage["waddleai"]["injected_tokens"] == 100
 
     @pytest.mark.asyncio
@@ -180,6 +182,7 @@ class TestUsageAccounting:
 
         result = await stage(ctx)
 
+        assert result.usage is not None
         assert result.usage["input_tokens"] == 5
         assert result.usage["waddleai"]["injected_tokens"] == 10
 

@@ -372,18 +372,25 @@ class WaddleAIHealthMonitor:
         unhealthy_count = 0
         degraded_count = 0
 
-        for i, result in enumerate(check_results):
-            if isinstance(result, Exception):
-                # Handle task exception
-                checker_name = self.checkers[i].name
+        for i, raw_result in enumerate(check_results):
+            # BaseException, not Exception: `gather(return_exceptions=True)`
+            # returns whatever the task raised, and since Python 3.8
+            # asyncio.CancelledError derives from BaseException. An
+            # `isinstance(result, Exception)` guard lets a cancelled check fall
+            # straight through to `result.name` and die with an AttributeError
+            # -- turning one cancelled probe into a failed health endpoint for
+            # every checker. Report it as unhealthy like any other failure.
+            if isinstance(raw_result, BaseException):
                 result = HealthCheckResult(
-                    name=checker_name,
+                    name=self.checkers[i].name,
                     status=HealthStatus.UNHEALTHY,
-                    message=f"Health check exception: {str(result)}",
-                    details={"error": str(result)},
+                    message=f"Health check exception: {raw_result!s}",
+                    details={"error": str(raw_result)},
                     timestamp=datetime.utcnow().isoformat(),
                     duration_ms=0,
                 )
+            else:
+                result = raw_result
 
             results[result.name] = result.to_dict()
             self.last_results[result.name] = result

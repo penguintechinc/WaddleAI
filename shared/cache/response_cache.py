@@ -31,14 +31,14 @@ import logging
 import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from shared.cache.affinity import SessionAffinityMap
 from shared.cache.config import CacheConfigResolver
 from shared.cache.exact import CachedResponse, ExactCache
 from shared.cache.keys import ExactKeyParts, derive_exact_key, is_exact_eligible
 from shared.cache.semantic import CtxFlags, SemanticCache, is_semantic_eligible
-from shared.cache.upstream import AnthropicPromptCacheOrchestrator
+from shared.cache.upstream import AnthropicPromptCacheOrchestrator, _AnthropicCacheConfigLike
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +159,7 @@ class ResponseCache:
                         return CacheLookupResult(status="semantic", cached=cached)
 
                     semantic_write_back = self._semantic_write_back(
-                        org_id, model_class, last_user["content"], context_hash, cfg
+                        self.semantic, org_id, model_class, last_user["content"], context_hash, cfg
                     )
                     write_back = _combine_write_backs(write_back, semantic_write_back)
 
@@ -184,7 +184,14 @@ class ResponseCache:
         model = (ctx.model or "").lower()
         if self.upstream is not None and model.startswith("claude"):
             body = {**(ctx.body or {}), "messages": ctx.messages}
-            annotated = await self.upstream.annotate_request(body, vkey_id or 0, cfg)
+            # annotate_request's cfg param is typed against the local, structural
+            # _AnthropicCacheConfigLike (upstream.py's own docstring: callers pass
+            # ResolvedCacheConfig, which satisfies it via duck typing) rather than
+            # importing shared.cache.config just for a type hint -- cast documents
+            # that intentional cross-module duck-typing for mypy.
+            annotated = await self.upstream.annotate_request(
+                body, vkey_id or 0, cast(_AnthropicCacheConfigLike, cfg)
+            )
             if annotated is not body:
                 ctx.messages = annotated["messages"]
 
@@ -211,10 +218,23 @@ class ResponseCache:
         return _write_back
 
     def _semantic_write_back(
-        self, org_id: int, model_class: str, last_user_msg: str, context_hash: str, cfg: Any
+        self,
+        semantic: SemanticCache,
+        org_id: int,
+        model_class: str,
+        last_user_msg: str,
+        context_hash: str,
+        cfg: Any,
     ) -> Callable[[dict, dict], Awaitable[None]]:
+        """Build the write-back closure over an already-narrowed (non-None) semantic cache.
+
+        Takes ``semantic`` as a parameter (rather than reading ``self.semantic``
+        inside the closure) so the None-check the caller already did stays
+        valid for mypy at the point the closure actually runs.
+        """
+
         async def _write_back(response_json: dict, usage: dict) -> None:
-            await self.semantic.put(
+            await semantic.put(
                 org_id=org_id,
                 model_class=model_class,
                 last_user_msg=last_user_msg,

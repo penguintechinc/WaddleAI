@@ -33,6 +33,7 @@ import asyncio
 from datetime import datetime
 from typing import Any
 
+from penguin_dal.db import DB
 from quart import g, jsonify
 
 from shared.auth.rbac import Permission
@@ -44,6 +45,19 @@ from .hook_rules import scope_readable
 from .hooks import hooks_bp
 
 _DECISIONS = ("allow", "deny", "ask")
+
+
+def _db() -> DB:
+    """Return the process-wide penguin-dal handle, narrowed away from ``None``.
+
+    ``extensions.db`` is declared ``DB | None`` because it starts unset
+    before ``init_db()`` runs at startup; every route below only executes
+    after that point, so this narrows the type for mypy without adding any
+    reachable failure mode.
+    """
+    if db is None:
+        raise RuntimeError("database not initialized")
+    return db
 
 
 def _counter_samples(counter: Any) -> list[Any]:
@@ -124,7 +138,8 @@ async def get_hook_metrics() -> tuple:
     metrics = get_management_metrics()
 
     def _visible_rules() -> list[Any]:
-        rows = db(db.hook_rules.id > 0).select(orderby=db.hook_rules.id)
+        conn = _db()
+        rows = conn(conn.hook_rules.id > 0).select(orderby=conn.hook_rules.id)
         return [
             r for r in rows if scope_readable(user_role, user_org_id, r.scope_type, r.scope_ref)
         ]

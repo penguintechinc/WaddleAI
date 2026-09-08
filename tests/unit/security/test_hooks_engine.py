@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
-from shared.security.hooks_config import HookConfig
-from shared.security.hooks_denylist import DenylistEntry
+from shared.security.hooks_config import HookConfig, HookConfigResolver
+from shared.security.hooks_denylist import DenylistEntry, HookDenylistResolver
 from shared.security.hooks_engine import HooksPolicyEngine
-from shared.security.hooks_rules import HookRule
+from shared.security.hooks_rules import HookRule, HookRulesResolver
+from shared.security.policy_resolver import PolicyResolver
 
 
 class _StaticDenylistResolver:
@@ -109,11 +110,15 @@ def _engine(
     security_policy_engine: Any = None,
     metrics: Any = None,
 ) -> HooksPolicyEngine:
+    # The _Static*/_Stub* test doubles above deliberately duck-type the real
+    # resolver classes (same async `resolve(...)` signature) rather than
+    # subclassing them, so a `cast` here documents an intentional structural
+    # substitution for HooksPolicyEngine's nominally-typed constructor.
     return HooksPolicyEngine(
-        denylist_resolver=_StaticDenylistResolver(denylist_entries),
-        rules_resolver=_StaticRulesResolver(rules),
-        config_resolver=_StaticConfigResolver(config),
-        security_policy_resolver=_StubPolicyResolver(),
+        denylist_resolver=cast(HookDenylistResolver, _StaticDenylistResolver(denylist_entries)),
+        rules_resolver=cast(HookRulesResolver, _StaticRulesResolver(rules)),
+        config_resolver=cast(HookConfigResolver, _StaticConfigResolver(config)),
+        security_policy_resolver=cast(PolicyResolver, _StubPolicyResolver()),
         security_policy_engine=security_policy_engine,
         metrics=metrics,
     )

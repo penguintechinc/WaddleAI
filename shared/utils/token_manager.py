@@ -469,7 +469,7 @@ class TokenManager:
 
         usage_records = self.db(query).select()
 
-        stats = {
+        stats: dict[str, Any] = {
             "total_waddleai_tokens": 0,
             "total_llm_input_tokens": 0,
             "total_llm_output_tokens": 0,

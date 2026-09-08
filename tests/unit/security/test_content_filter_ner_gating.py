@@ -421,7 +421,8 @@ class TestRunBuiltinPatternsDisabledSkip:
         async def _disabled(_org_id: int | None) -> set[str]:
             return {"email"}
 
-        cf._load_disabled_builtins = _disabled  # type: ignore[method-assign]
+        # Instance-attr shadows a bound method; mypy compares against the unbound signature.
+        cf._load_disabled_builtins = _disabled  # type: ignore[assignment]
 
         text = "contact me at a@b.com, ssn is 123-45-6789"
         violations = await cf._run_builtin_patterns(text, "input", org_id=None)
@@ -469,7 +470,8 @@ class TestRunNerPatternsDisabledAndFailures:
         async def _disabled(_org_id: int | None) -> set[str]:
             return {"PERSON"}
 
-        cf._load_disabled_ner_entities = _disabled  # type: ignore[method-assign]
+        # Instance-attr shadows a bound method; mypy compares against the unbound signature.
+        cf._load_disabled_ner_entities = _disabled  # type: ignore[assignment]
 
         violations = await cf._run_ner_patterns("Jane Doe called", "input", org_id=None)
 

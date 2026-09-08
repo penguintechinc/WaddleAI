@@ -13,13 +13,13 @@ from tests.unit.management.conftest import make_select_result
 def make_mock_token_usage(
     user_id: int = 1,
     org_id: int = 1,
-    key_id: int = 1,
+    key_id: int | None = 1,
     waddleai_tokens: int = 1000,
     tokens_input: int = 500,
     tokens_output: int = 500,
     request_count: int = 5,
     cost_usd: float = 0.05,
-    usage_date: date = None,
+    usage_date: date | None = None,
 ) -> MagicMock:
     """Create a mock token_usage record."""
     if usage_date is None:
@@ -46,7 +46,7 @@ def make_mock_usage_log(
     cost_usd: float = 0.005,
     tokens_input: int = 50,
     tokens_output: int = 50,
-    timestamp: datetime = None,
+    timestamp: datetime | None = None,
 ) -> MagicMock:
     """Create a mock usage_logs record."""
     if timestamp is None:

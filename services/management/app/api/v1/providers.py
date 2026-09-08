@@ -13,7 +13,7 @@ from ...extensions import db
 from . import api_v1_bp
 from .auth import require_auth, require_scope
 
-_BEARER_AUTH = [{"bearerAuth": []}]
+_BEARER_AUTH: list[dict[str, list[str]]] = [{"bearerAuth": []}]
 
 
 # ---------------------------------------------------------------------------

@@ -62,7 +62,12 @@ class PenguinTechLicenseClient:
                 "Content-Type": "application/json",
             }
         )
-        self.session.timeout = timeout
+        # No `self.session.timeout = timeout` here: requests.Session accepts the
+        # attribute but Session.request() never reads it (verified against
+        # requests 2.34.2), so it silently bought nothing and every call to the
+        # license server was unbounded -- a hung license.penguintech.io could
+        # block the caller indefinitely. The timeout is passed per-request
+        # below, which is the only form requests honours.
 
         # Feature cache
         self._feature_cache = {}
@@ -105,7 +110,9 @@ class PenguinTechLicenseClient:
         """
         try:
             response = self.session.post(
-                f"{self.base_url}/api/v2/validate", json={"product": self.product}
+                f"{self.base_url}/api/v2/validate",
+                json={"product": self.product},
+                timeout=self.timeout,
             )
             response.raise_for_status()
 
@@ -147,6 +154,7 @@ class PenguinTechLicenseClient:
             response = self.session.post(
                 f"{self.base_url}/api/v2/features",
                 json={"product": self.product, "feature": feature},
+                timeout=self.timeout,
             )
             response.raise_for_status()
 
@@ -191,7 +199,9 @@ class PenguinTechLicenseClient:
             payload.update(usage_data)
 
         try:
-            response = self.session.post(f"{self.base_url}/api/v2/keepalive", json=payload)
+            response = self.session.post(
+                f"{self.base_url}/api/v2/keepalive", json=payload, timeout=self.timeout
+            )
             response.raise_for_status()
 
             return response.json()

@@ -20,6 +20,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
+from penguin_dal.db import DB
 from quart import Blueprint, g, jsonify, request
 from quart_schema import operation_id
 
@@ -30,6 +31,20 @@ from ...extensions import db
 from .auth import require_auth, require_scope
 
 logger = logging.getLogger(__name__)
+
+
+def _db() -> DB:
+    """Return the process-wide penguin-dal handle, narrowed away from ``None``.
+
+    ``extensions.db`` is declared ``DB | None`` because it starts unset
+    before ``init_db()`` runs at startup; every route below only executes
+    after that point, so this narrows the type for mypy without adding any
+    reachable failure mode (see keys.py for the same pattern).
+    """
+    if db is None:
+        raise RuntimeError("database not initialized")
+    return db
+
 
 security_policies_bp = Blueprint(
     "security_policies", __name__, url_prefix="/api/v1/security-policies"
@@ -341,10 +356,11 @@ def _resolve_subject_org(subject_type: str, subject_ref: str) -> int | None:
     (see migration 011) -- org scoping is enforced here by joining out to
     the subject's own record instead.
     """
+    handle = _db()
     if subject_type == "user":
-        row = db(db.users.id == subject_ref).select().first()
+        row = handle(handle.users.id == subject_ref).select().first()
     else:
-        row = db(db.virtual_keys.id == subject_ref).select().first()
+        row = handle(handle.virtual_keys.id == subject_ref).select().first()
     return row.organization_id if row else None
 
 

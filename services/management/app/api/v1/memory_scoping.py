@@ -24,6 +24,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
+from penguin_dal.db import DB
 from quart import g, jsonify, request
 
 from shared.auth.rbac import Permission
@@ -45,6 +46,19 @@ logger = logging.getLogger(__name__)
 _DEFAULT_RELEVANCE_CUTOFF = 0.7
 _DEFAULT_TOP_K = 3
 _PROMOTABLE_SCOPES = ("repo", "project", "org")
+
+
+def _db() -> DB:
+    """Return the process-wide penguin-dal handle, narrowed away from ``None``.
+
+    ``extensions.db`` is declared ``DB | None`` because it starts unset
+    before ``init_db()`` runs at startup; every route below only executes
+    after that point, so this narrows the type for mypy without adding any
+    reachable failure mode.
+    """
+    if db is None:
+        raise RuntimeError("database not initialized")
+    return db
 
 
 def _row_to_scoped_record(row: Any) -> ScopedRecord:
@@ -69,7 +83,8 @@ async def get_memory_config_v2():
     org_id = request.args.get("organization_id", type=int) or g.user.get("organization_id")
 
     def _fetch() -> Any:
-        return db(db.conversation_memory_configs.organization_id == org_id).select().first()
+        conn = _db()
+        return conn(conn.conversation_memory_configs.organization_id == org_id).select().first()
 
     row = await asyncio.to_thread(_fetch)
     if row is None:
@@ -112,7 +127,8 @@ async def set_memory_config_v2():
     cutoff = data.get("relevance_cutoff", _DEFAULT_RELEVANCE_CUTOFF)
 
     def _upsert() -> str:
-        existing = db(db.conversation_memory_configs.organization_id == org_id).select().first()
+        conn = _db()
+        existing = conn(conn.conversation_memory_configs.organization_id == org_id).select().first()
         if existing:
             # regression: penguin_dal's Row has no update_record() (classic
             # PyDAL API); the correct penguin_dal update is
@@ -122,11 +138,11 @@ async def set_memory_config_v2():
             # the old call's AttributeError propagated uncaught out of the
             # route entirely on every update -- only the very first §9.4
             # config write for an org ever succeeded.
-            db(db.conversation_memory_configs.id == existing.id).update(
+            conn(conn.conversation_memory_configs.id == existing.id).update(
                 enabled=data.get("enabled", existing.enabled), similarity_threshold=cutoff
             )
             return "updated"
-        db.conversation_memory_configs.insert(
+        conn.conversation_memory_configs.insert(
             organization_id=org_id,
             enabled=data.get("enabled", True),
             max_messages=20,
@@ -157,9 +173,10 @@ async def memory_promote(item_id: int):
     org_id = g.user.get("organization_id")
 
     def _fetch() -> Any:
-        mem = db.memory_embeddings
+        conn = _db()
+        mem = conn.memory_embeddings
         query = (mem.id == item_id) & (mem.organization_id == org_id)
-        return db(query).select().first()
+        return conn(query).select().first()
 
     row = await asyncio.to_thread(_fetch)
     if row is None:
@@ -173,10 +190,11 @@ async def memory_promote(item_id: int):
         return jsonify({"error": "scope_ref required for repo/project promotion"}), 400
 
     def _promote() -> None:
-        db(db.memory_embeddings.id == item_id).update(
+        conn = _db()
+        conn(conn.memory_embeddings.id == item_id).update(
             scope_type=target_scope, scope_ref=scope_ref, trust_tier="confirmed"
         )
-        db.commit()
+        conn.commit()
 
     await asyncio.to_thread(_promote)
     return (
@@ -212,9 +230,10 @@ async def memory_correct(item_id: int):
     org_id = g.user.get("organization_id")
 
     def _fetch() -> Any:
-        mem = db.memory_embeddings
+        conn = _db()
+        mem = conn.memory_embeddings
         query = (mem.id == item_id) & (mem.organization_id == org_id)
-        return db(query).select().first()
+        return conn(query).select().first()
 
     row = await asyncio.to_thread(_fetch)
     if row is None:
@@ -259,9 +278,10 @@ async def memory_correct(item_id: int):
     new_wins = resolution.winner_id != existing_record.id
 
     def _apply_correction() -> int:
+        conn = _db()
         new_status = "active" if new_wins else "quarantined"
         old_status = "quarantined" if new_wins else "active"
-        new_id = db.memory_embeddings.insert(
+        new_id = conn.memory_embeddings.insert(
             user_id=row.user_id,
             organization_id=row.organization_id,
             session_id=row.session_id,
@@ -274,10 +294,10 @@ async def memory_correct(item_id: int):
             version=new_record.version,
             status=new_status,
         )
-        db(db.memory_embeddings.id == item_id).update(
+        conn(conn.memory_embeddings.id == item_id).update(
             status=old_status, superseded_by=new_id if new_wins else None
         )
-        db.commit()
+        conn.commit()
         return new_id
 
     new_id = await asyncio.to_thread(_apply_correction)
@@ -307,16 +327,17 @@ async def memory_dispute(item_id: int):
     org_id = g.user.get("organization_id")
 
     def _dispute() -> bool:
-        mem = db.memory_embeddings
+        conn = _db()
+        mem = conn.memory_embeddings
         query = (mem.id == item_id) & (mem.organization_id == org_id)
-        existing = db(query).select().first()
+        existing = conn(query).select().first()
         if existing is None:
             return False
         provenance = dict(getattr(existing, "provenance", None) or {})
         provenance["disputed_by"] = user_id
         provenance["disputed_at"] = datetime.utcnow().isoformat()
-        db(query).update(status="quarantined", provenance=provenance)
-        db.commit()
+        conn(query).update(status="quarantined", provenance=provenance)
+        conn.commit()
         return True
 
     disputed = await asyncio.to_thread(_dispute)

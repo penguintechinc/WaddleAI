@@ -87,6 +87,7 @@ def test_build_backend_resolves_config() -> None:
 
     backend = fleet_registry.build_backend(db=None, row=row)
 
+    assert isinstance(backend, _DummyBackend)
     assert backend.config == {"pool": "gpu-a"}
 
 
@@ -104,6 +105,7 @@ def test_build_backend_decrypts_credentials_and_never_logs_plaintext(caplog) -> 
         with caplog.at_level("DEBUG"):
             backend = fleet_registry.build_backend(db=None, row=row)
 
+    assert isinstance(backend, _DummyBackend)
     assert backend.credentials == "super-secret-token"
     assert "super-secret-token" not in caplog.text
     assert "*" in caplog.text  # masked form logged instead

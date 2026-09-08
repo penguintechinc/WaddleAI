@@ -9,15 +9,30 @@ import logging
 import random
 import threading
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 import aiohttp
 import anthropic
 import openai
 import tiktoken
+from anthropic.types import MessageParam, TextBlockParam
+from openai import AsyncStream
+from openai.types.chat import ChatCompletionChunk, ChatCompletionMessageParam
+
+from shared.security.credential_encryption import decrypt_credential
+
+# Optional dependency: google-genai. Pre-declared with a fallback-compatible
+# type so the `except` branch's `None` assignment is a plain variable
+# assignment rather than a reassignment of an imported module (which mypy
+# otherwise rejects as "Incompatible types in assignment").
+#
+# This declaration sits BELOW the last real import on purpose: it is not an
+# import, so ruff treats it as the end of the import section and flags anything
+# imported after it as E402.
+genai: Any | None
 
 try:
     from google import genai  # type: ignore[attr-defined]
@@ -28,8 +43,6 @@ try:
     import boto3
 except ImportError:
     boto3 = None
-
-from shared.security.credential_encryption import decrypt_credential
 
 logger = logging.getLogger(__name__)
 
@@ -283,10 +296,15 @@ class LLMConnector(ABC):
         pass
 
     @abstractmethod
-    async def stream_chat_completion(
+    def stream_chat_completion(
         self, messages: list[dict[str, str]], model: str, **kwargs
     ) -> AsyncIterator[StreamChunk]:
-        """Stream chat completion, yielding chunks with delta text and usage on final chunk."""
+        """Stream chat completion, yielding chunks with delta text and usage on final chunk.
+
+        Declared as a plain (non-async) method because every concrete override is an
+        async-generator function (`async def ... yield ...`): calling it returns the
+        AsyncIterator directly, with no `await` on the call itself.
+        """
         pass
 
     @abstractmethod
@@ -329,14 +347,23 @@ class OpenAIConnector(LLMConnector):
         """Generate OpenAI chat completion."""
         try:
             response = await self.client.chat.completions.create(
-                model=model, messages=messages, **kwargs
+                model=model,
+                messages=cast(list[ChatCompletionMessageParam], messages),
+                **kwargs,
             )
 
-            content = response.choices[0].message.content
-            usage_info = {
-                "input_tokens": response.usage.prompt_tokens,
-                "output_tokens": response.usage.completion_tokens,
-                "total_tokens": response.usage.total_tokens,
+            content = response.choices[0].message.content or ""
+            usage = response.usage
+            if usage is None:
+                raise ProviderServerError(
+                    provider="openai",
+                    model=model,
+                    message="OpenAI response missing usage data",
+                )
+            usage_info: dict[str, Any] = {
+                "input_tokens": usage.prompt_tokens,
+                "output_tokens": usage.completion_tokens,
+                "total_tokens": usage.total_tokens,
                 "model": response.model,
                 "finish_reason": response.choices[0].finish_reason,
                 "provider": "openai",
@@ -344,7 +371,7 @@ class OpenAIConnector(LLMConnector):
 
             # OpenAI caches automatically upstream; surface it if reported
             # (spec §6.3) -- additive, absent/malformed details -> 0.
-            details = getattr(response.usage, "prompt_tokens_details", None)
+            details = getattr(usage, "prompt_tokens_details", None)
             cached_tokens = getattr(details, "cached_tokens", 0) if details else 0
             usage_info["cached_tokens"] = cached_tokens if isinstance(cached_tokens, int) else 0
 
@@ -398,13 +425,17 @@ class OpenAIConnector(LLMConnector):
         """
         try:
             stream_options = kwargs.pop("stream_options", {"include_usage": True})
-            stream = await self.client.chat.completions.create(
+            raw_stream = await self.client.chat.completions.create(
                 model=model,
-                messages=messages,
+                messages=cast(list[ChatCompletionMessageParam], messages),
                 stream=True,
                 stream_options=stream_options,
                 **kwargs,
             )
+            # stream=True (with **kwargs present) defeats the SDK's overload
+            # resolution, widening the return type to a Union; the literal
+            # stream=True above guarantees the AsyncStream branch at runtime.
+            stream = cast(AsyncStream[ChatCompletionChunk], raw_stream)
             usage: dict[str, Any] | None = None
             async for chunk in stream:
                 if chunk.choices and chunk.choices[0].delta.content:
@@ -548,14 +579,23 @@ class XAIConnector(OpenAIConnector):
         """Generate xAI chat completion."""
         try:
             response = await self.client.chat.completions.create(
-                model=model, messages=messages, **kwargs
+                model=model,
+                messages=cast(list[ChatCompletionMessageParam], messages),
+                **kwargs,
             )
 
-            content = response.choices[0].message.content
-            usage_info = {
-                "input_tokens": response.usage.prompt_tokens,
-                "output_tokens": response.usage.completion_tokens,
-                "total_tokens": response.usage.total_tokens,
+            content = response.choices[0].message.content or ""
+            usage = response.usage
+            if usage is None:
+                raise ProviderServerError(
+                    provider="xai",
+                    model=model,
+                    message="xAI response missing usage data",
+                )
+            usage_info: dict[str, Any] = {
+                "input_tokens": usage.prompt_tokens,
+                "output_tokens": usage.completion_tokens,
+                "total_tokens": usage.total_tokens,
                 "model": response.model,
                 "finish_reason": response.choices[0].finish_reason,
                 "provider": "xai",
@@ -698,15 +738,31 @@ class AnthropicConnector(LLMConnector):
                 else:
                     user_messages.append(msg)
 
-            # Anthropic API call
+            # Anthropic API call. The SDK's stub only accepts a sentinel
+            # `Omit`/absent value for "no system prompt", not a literal
+            # `None` -- cast to preserve the exact runtime value (`None`)
+            # this connector has always sent in that case.
             response = await self.client.messages.create(
                 model=model,
                 max_tokens=kwargs.get("max_tokens", 1000),
-                system=system_message if system_message else None,
-                messages=user_messages,
+                system=cast(
+                    "str | Iterable[TextBlockParam]", system_message if system_message else None
+                ),
+                messages=cast(list[MessageParam], user_messages),
             )
 
-            content = response.content[0].text
+            # getattr rather than isinstance(..., TextBlock): duck-types the
+            # same way the rest of this module treats SDK response objects
+            # (e.g. _extract_anthropic_text below), so this still accepts
+            # test doubles that aren't real anthropic.types.TextBlock
+            # instances while satisfying the type checker.
+            content = getattr(response.content[0], "text", None)
+            if content is None:
+                raise ProviderServerError(
+                    provider="anthropic",
+                    model=model,
+                    message="Anthropic response's first content block was not text",
+                )
 
             # Estimate token usage (fallback for when the API doesn't report
             # real usage -- see below). Content may be a block array (e.g.
@@ -830,12 +886,19 @@ class AnthropicConnector(LLMConnector):
                 else:
                     user_messages.append(msg)
 
-            # Use streaming context manager
-            with self.client.messages.stream(
+            # `async with`, not `with`: anthropic's AsyncMessageStreamManager
+            # implements only __aenter__/__aexit__ (verified against the pinned
+            # anthropic 1.0.0). This was a plain `with` and therefore raised
+            # AttributeError on EVERY Anthropic streaming call -- swallowed by
+            # the `except Exception` below and re-raised as ProviderServerError,
+            # so it read as an upstream outage rather than a client-side defect.
+            async with self.client.messages.stream(
                 model=model,
                 max_tokens=kwargs.get("max_tokens", 1000),
-                system=system_message if system_message else None,
-                messages=user_messages,
+                system=cast(
+                    "str | Iterable[TextBlockParam]", system_message if system_message else None
+                ),
+                messages=cast(list[MessageParam], user_messages),
             ) as stream:
                 # Iterate through events asynchronously
                 async for event in stream:
@@ -913,6 +976,8 @@ class GeminiConnector(LLMConnector):
     def __init__(self, name: str, config: dict[str, Any]):
         """Create the google-genai Client and a tiktoken-based token estimator."""
         super().__init__(name, config)
+        if genai is None:
+            raise RuntimeError("google-genai package not installed; GeminiConnector unavailable")
         self.client = genai.Client(api_key=self.api_key)
         # Gemini doesn't have tokenizers, so we estimate using tiktoken
         self.token_estimator = tiktoken.encoding_for_model("gpt-3.5-turbo")
@@ -952,9 +1017,18 @@ class GeminiConnector(LLMConnector):
             cached_content = kwargs.get("cached_content")
             if cached_content:
                 config_kwargs["cached_content"] = cached_content
+            if genai is None:
+                raise RuntimeError(
+                    "google-genai package not installed; GeminiConnector unavailable"
+                )
             generation_config = genai.types.GenerateContentConfig(**config_kwargs)
 
             # Call Gemini API
+            # NOTE (found while fixing mypy types, not fixed here per hard
+            # rule against behaviour changes): generate_content() has no
+            # `system_prompt` parameter (only model/contents/config) -- this
+            # call raises TypeError on every invocation, caught below and
+            # re-raised as ProviderServerError. See PR/session report.
             response = await self.client.aio.models.generate_content(
                 model=f"models/{model}",
                 contents=gemini_messages,
@@ -963,18 +1037,24 @@ class GeminiConnector(LLMConnector):
             )
 
             content = response.text
+            if content is None:
+                raise ProviderServerError(
+                    provider="gemini",
+                    model=model,
+                    message="Gemini response contained no text",
+                )
 
             # Estimate token usage
             input_text = system_message + " ".join([msg["content"] for msg in messages])
             input_tokens = len(self.token_estimator.encode(input_text))
             output_tokens = len(self.token_estimator.encode(content))
 
-            usage_info = {
+            usage_info: dict[str, Any] = {
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
                 "total_tokens": input_tokens + output_tokens,
                 "model": model,
-                "finish_reason": response.candidates[0].finish_reason.name
+                "finish_reason": getattr(response.candidates[0].finish_reason, "name", "unknown")
                 if response.candidates
                 else "unknown",
                 "provider": "gemini",
@@ -1027,6 +1107,8 @@ class GeminiConnector(LLMConnector):
                 model=f"models/{model}",
                 contents=text,
             )
+            if response.total_tokens is None:
+                raise ValueError("Gemini count_tokens response had no total_tokens")
             return int(response.total_tokens)
         except Exception:
             # Fallback to tiktoken estimation if API call fails
@@ -1049,7 +1131,8 @@ class GeminiConnector(LLMConnector):
             async for model in response:
                 # Extract model name, e.g. "gemini-2.0-flash" from
                 # "publishers/google/models/gemini-2.0-flash"
-                model_id = model.name.split("/")[-1] if hasattr(model, "name") else model.id
+                name_val = getattr(model, "name", None)
+                model_id = name_val.split("/")[-1] if name_val else getattr(model, "id", "")
                 # Only include models in our configured model_list
                 if model_id in self.model_list:
                     models.append(
@@ -1124,9 +1207,17 @@ class GeminiConnector(LLMConnector):
             cached_content = kwargs.get("cached_content")
             if cached_content:
                 config_kwargs["cached_content"] = cached_content
+            if genai is None:
+                raise RuntimeError(
+                    "google-genai package not installed; GeminiConnector unavailable"
+                )
             generation_config = genai.types.GenerateContentConfig(**config_kwargs)
 
             # Stream Gemini content
+            # NOTE (found while fixing mypy types, not fixed here per hard
+            # rule against behaviour changes): generate_content_stream() has
+            # no `system_prompt` parameter -- see the identical note in
+            # chat_completion() above. Flagged as a genuine runtime bug.
             async for chunk in await self.client.aio.models.generate_content_stream(
                 model=f"models/{model}",
                 contents=gemini_messages,
@@ -2020,6 +2111,7 @@ class LLMConnectionManager:
                     "tls_config": link.tls_config or {},
                 }
 
+                connector: LLMConnector
                 if link.provider == "openai":
                     connector = OpenAIConnector(link.name, config)
                 elif link.provider == "xai":
@@ -2044,7 +2136,7 @@ class LLMConnectionManager:
             except Exception as e:
                 logger.error(f"Failed to load connector {link.name}: {e}")
 
-    def _select_credential(self, link: object) -> str:
+    def _select_credential(self, link: Any) -> str:
         """Select an API key for link using the credential pool.
 
         Queries provider_credentials for enabled credentials belonging to the

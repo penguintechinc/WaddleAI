@@ -49,7 +49,7 @@ class _Field:
     def __eq__(self, other: object) -> "_Query":  # type: ignore[override]
         return _Query(self.table_name, lambda row: getattr(row, self.field_name, None) == other)
 
-    def __gt__(self, other: object) -> "_Query":
+    def __gt__(self, other: int) -> "_Query":
         return _Query(
             self.table_name, lambda row: (getattr(row, self.field_name, None) or 0) > other
         )

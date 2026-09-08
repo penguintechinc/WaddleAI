@@ -18,6 +18,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
+from penguin_dal.db import DB
 from quart import Blueprint, g, jsonify, request
 
 from shared.auth.rbac import Permission
@@ -26,6 +27,20 @@ from ...extensions import db, redis_client
 from .auth import require_auth, require_scope
 
 logger = logging.getLogger(__name__)
+
+
+def _db() -> DB:
+    """Return the process-wide penguin-dal handle, narrowed away from ``None``.
+
+    ``extensions.db`` is declared ``DB | None`` because it starts unset
+    before ``init_db()`` runs at startup; every route below only executes
+    after that point, so this narrows the type for mypy without adding any
+    reachable failure mode (mirrors the same helper in ``fleet.py``).
+    """
+    if db is None:
+        raise RuntimeError("database not initialized")
+    return db
+
 
 routing_assignments_bp = Blueprint(
     "routing_assignments", __name__, url_prefix="/api/v1/routing/assignments"
@@ -79,7 +94,7 @@ def _visible_query(user_role: str, user_org_id: int | None):
     Admin sees everything; everyone else sees global rows plus their own
     org's rows (never another org's).
     """
-    table = db.model_assignments
+    table = _db().model_assignments
     if user_role == "admin":
         return table.id > 0
     return (table.scope == "global") | ((table.scope == "org") & (table.scope_ref == user_org_id))
@@ -124,17 +139,18 @@ async def list_entries() -> tuple:
     user_org_id = g.user.get("organization_id")
 
     def _fetch():
+        database = _db()
         query = _visible_query(user_role, user_org_id)
 
         if tool_type:
-            query &= db.model_assignments.tool_type == tool_type
+            query &= database.model_assignments.tool_type == tool_type
         if scope_param:
-            query &= db.model_assignments.scope == scope_param
+            query &= database.model_assignments.scope == scope_param
         if enabled_param is not None:
             enabled_val: bool = enabled_param.lower() in ("true", "1", "yes")
-            query &= db.model_assignments.enabled == enabled_val
+            query &= database.model_assignments.enabled == enabled_val
 
-        return db(query).select(orderby=db.model_assignments.id)
+        return database(query).select(orderby=database.model_assignments.id)
 
     rows = await asyncio.to_thread(_fetch)
     entries: list[dict[str, Any]] = [_row_to_dict(r) for r in rows]
@@ -159,8 +175,9 @@ async def get_entry(entry_id: int) -> tuple:
     user_org_id = g.user.get("organization_id")
 
     def _fetch():
-        query = _visible_query(user_role, user_org_id) & (db.model_assignments.id == entry_id)
-        return db(query).select().first()
+        database = _db()
+        query = _visible_query(user_role, user_org_id) & (database.model_assignments.id == entry_id)
+        return database(query).select().first()
 
     row = await asyncio.to_thread(_fetch)
     if not row:
@@ -220,30 +237,33 @@ async def create_or_upsert_entry() -> tuple:
     warnings = await _capability_warnings(data["model_name"])
 
     def _upsert():
+        database = _db()
         existing = (
-            db(
-                (db.model_assignments.tool_type == tool_type)
-                & (db.model_assignments.scope == scope)
-                & (db.model_assignments.scope_ref == scope_ref)
+            database(
+                (database.model_assignments.tool_type == tool_type)
+                & (database.model_assignments.scope == scope)
+                & (database.model_assignments.scope_ref == scope_ref)
             )
             .select()
             .first()
         )
 
         if existing:
-            db(db.model_assignments.id == existing.id).update(**update_fields)
-            db.commit()
-            return "updated", db(db.model_assignments.id == existing.id).select().first()
+            database(database.model_assignments.id == existing.id).update(**update_fields)
+            database.commit()
+            return "updated", database(
+                database.model_assignments.id == existing.id
+            ).select().first()
 
-        new_id: int = db.model_assignments.insert(
+        new_id: int = database.model_assignments.insert(
             tool_type=tool_type,
             scope=scope,
             scope_ref=scope_ref,
             **update_fields,
             created_at=datetime.utcnow(),
         )
-        db.commit()
-        return "created", db(db.model_assignments.id == new_id).select().first()
+        database.commit()
+        return "created", database(database.model_assignments.id == new_id).select().first()
 
     action, row = await asyncio.to_thread(_upsert)
     await _invalidate_assignment_cache(scope_ref if scope == "org" else None, tool_type)
@@ -282,7 +302,8 @@ async def update_entry(entry_id: int) -> tuple:
         warnings = await _capability_warnings(update_fields["model_name"])
 
     def _update():
-        row = db(db.model_assignments.id == entry_id).select().first()
+        database = _db()
+        row = database(database.model_assignments.id == entry_id).select().first()
         if not row:
             return "not_found", None, None
         scope = getattr(row, "scope", "global")
@@ -292,9 +313,9 @@ async def update_entry(entry_id: int) -> tuple:
         if not update_fields:
             return "no_fields", None, None
 
-        db(db.model_assignments.id == entry_id).update(**update_fields)
-        db.commit()
-        updated_row = db(db.model_assignments.id == entry_id).select().first()
+        database(database.model_assignments.id == entry_id).update(**update_fields)
+        database.commit()
+        updated_row = database(database.model_assignments.id == entry_id).select().first()
         return "ok", updated_row, (row.tool_type, scope, scope_ref)
 
     result, row, meta = await asyncio.to_thread(_update)
@@ -330,7 +351,8 @@ async def delete_entry(entry_id: int) -> tuple:
     user_org_id = g.user.get("organization_id")
 
     def _delete():
-        row = db(db.model_assignments.id == entry_id).select().first()
+        database = _db()
+        row = database(database.model_assignments.id == entry_id).select().first()
         if not row:
             return "not_found", None
         scope = getattr(row, "scope", "global")
@@ -338,8 +360,8 @@ async def delete_entry(entry_id: int) -> tuple:
         if not _can_write(user_role, user_org_id, scope, scope_ref):
             return "forbidden", None
 
-        db(db.model_assignments.id == entry_id).delete()
-        db.commit()
+        database(database.model_assignments.id == entry_id).delete()
+        database.commit()
         return "ok", (row.tool_type, scope, scope_ref)
 
     result, meta = await asyncio.to_thread(_delete)
@@ -375,14 +397,15 @@ async def seed_assignments() -> tuple:
     """
 
     def _seed():
+        database = _db()
         created = 0
         updated = 0
         for entry in DEFAULT_ASSIGNMENTS:
             existing = (
-                db(
-                    (db.model_assignments.tool_type == entry["tool_type"])
-                    & (db.model_assignments.scope == "global")
-                    & (db.model_assignments.scope_ref == None)  # noqa: E711
+                database(
+                    (database.model_assignments.tool_type == entry["tool_type"])
+                    & (database.model_assignments.scope == "global")
+                    & (database.model_assignments.scope_ref == None)  # noqa: E711
                 )
                 .select()
                 .first()
@@ -393,10 +416,10 @@ async def seed_assignments() -> tuple:
                 "enabled": entry.get("enabled", True),
             }
             if existing:
-                db(db.model_assignments.id == existing.id).update(**fields)
+                database(database.model_assignments.id == existing.id).update(**fields)
                 updated += 1
             else:
-                db.model_assignments.insert(
+                database.model_assignments.insert(
                     tool_type=entry["tool_type"],
                     scope="global",
                     scope_ref=None,
@@ -404,7 +427,7 @@ async def seed_assignments() -> tuple:
                     created_at=datetime.utcnow(),
                 )
                 created += 1
-        db.commit()
+        database.commit()
         return created, updated
 
     created, updated = await asyncio.to_thread(_seed)

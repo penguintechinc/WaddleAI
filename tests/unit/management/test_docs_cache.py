@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from typing import Any
 
 import pytest
 
@@ -38,6 +39,10 @@ class _FakeField:
 class _FakeRow:
     def __init__(self, **fields: object) -> None:
         self.__dict__.update(fields)
+
+    def __getattr__(self, name: str) -> Any:
+        """Match a real Row: unset attrs raise AttributeError; typed Any for mypy."""
+        raise AttributeError(name)
 
 
 class _FakeTable:
@@ -209,6 +214,7 @@ class TestTTLBoundary:
 
         result = await cache.fetch("testeco", "x", "1.0", httpserver.url_for("/docs/x"))
 
+        assert result is not None
         assert result.ttl == 30 * 24 * 3600
 
     @pytest.mark.asyncio
@@ -221,6 +227,7 @@ class TestTTLBoundary:
 
         result = await cache.fetch("testeco", "x", "latest", httpserver.url_for("/docs/x"))
 
+        assert result is not None
         assert result.ttl == 7 * 24 * 3600
 
     @pytest.mark.asyncio
@@ -247,6 +254,7 @@ class TestTTLBoundary:
 
         result = await cache.fetch("testeco", "x", "latest", httpserver.url_for("/docs/x"))
 
+        assert result is not None
         assert result.from_cache is False
         assert "fresh content" in result.content_md
 
@@ -325,6 +333,7 @@ class TestAttributionAndLicenseGate:
 
         result = await cache.fetch("mdn", None, "latest", httpserver.url_for("/docs/mdn-page"))
 
+        assert result is not None
         assert result.attribution_required is True
         assert result.attribution_notice is not None
         assert "CC-BY-SA-2.5" in result.attribution_notice

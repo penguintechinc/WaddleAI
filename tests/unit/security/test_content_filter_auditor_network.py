@@ -12,6 +12,7 @@ programming defects one level up, see `test_content_filter_fail_mode.py`).
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -86,7 +87,7 @@ class TestStandardChatModelAuditor:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Both regex and NER violation summaries reach the auditor's user message."""
-        captured: dict[str, object] = {}
+        captured: dict[str, Any] = {}
 
         def _capturing_post(url: str, json: dict, timeout: object) -> AsyncMock:
             captured["messages"] = json["messages"]

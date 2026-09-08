@@ -1,5 +1,7 @@
 """ConversationSummarizer tests: threshold, keep-recent-N, reuse, ratio guardrail, degradation."""
 
+from typing import Any
+
 import pytest
 
 from shared.memory.config import ProxyMemoryConfig
@@ -31,7 +33,7 @@ class FakeConnector:
         """Return the word count as a stand-in token count."""
         return _word_count(text)
 
-    async def chat_completion(self, messages: list, model: str = None, **kwargs):
+    async def chat_completion(self, messages: list, model: str | None = None, **kwargs):
         """Return the scripted summary, or raise if raise_on_chat is set."""
         if self.raise_on_chat:
             raise RuntimeError("upstream unavailable")
@@ -158,7 +160,7 @@ def summarizer(db, llm_manager) -> ConversationSummarizer:
 
 
 def _cfg(**overrides) -> ProxyMemoryConfig:
-    base = dict(
+    base: dict[str, Any] = dict(
         scratchpad_enabled=True,
         scratchpad_substitution=False,
         summarization_enabled=True,

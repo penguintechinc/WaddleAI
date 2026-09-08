@@ -17,6 +17,7 @@ a narrow scope to a broader one is always an explicit caller action.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -213,7 +214,7 @@ def detect_contradiction(
     new_record: ScopedRecord,
     existing: list[ScopedRecord],
     *,
-    similarity_fn: object = None,
+    similarity_fn: Callable[[list[float], list[float]], float] | None = None,
     threshold: float = 0.92,
 ) -> ScopedRecord | None:
     """Find an existing record that semantically conflicts with ``new_record``.

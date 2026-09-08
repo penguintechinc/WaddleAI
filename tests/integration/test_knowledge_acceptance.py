@@ -11,6 +11,7 @@ tests (see class docstrings).
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -134,7 +135,12 @@ class TestCodeRAGSymbolPrecision:
         backend = _StubCodeSearchBackend(records)
         caller = ScopeKey(org="org-a", repo="repo-1", branch="main")
 
-        async def _fake_embed(content, db=None, **kwargs):
+        async def _fake_embed(
+            content: str,
+            db: Any | None = None,
+            model: str | None = None,
+            embedding_manager: Any | None = None,
+        ) -> list[float]:
             return [0.1] * 768
 
         import shared.knowledge.code_search as code_search_module
@@ -232,7 +238,12 @@ class TestScopingTrustIsolationSuite:
         backend = _StubCodeSearchBackend(records_a + records_b)
         caller = ScopeKey(org="org-a", repo="repo-1", branch="feature/A")
 
-        async def _fake_embed(content, db=None, **kwargs):
+        async def _fake_embed(
+            content: str,
+            db: Any | None = None,
+            model: str | None = None,
+            embedding_manager: Any | None = None,
+        ) -> list[float]:
             return [0.1] * 768
 
         import shared.knowledge.code_search as code_search_module

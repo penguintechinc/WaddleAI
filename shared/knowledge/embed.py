@@ -22,6 +22,7 @@ import asyncio
 import hashlib
 import json
 import logging
+from typing import Any
 
 from shared.utils.embedding_manager import EmbeddingManager, create_embedding_manager
 
@@ -31,7 +32,7 @@ DEFAULT_EMBEDDING_MODEL = "nomic-embed-text"
 DEFAULT_EMBEDDING_DIMENSIONS = 768
 
 
-def resolve_embedding_model(db: object | None) -> str:
+def resolve_embedding_model(db: Any | None) -> str:
     """Resolve the embedding model from the §7.1 ``embeddings`` assignment.
 
     Reads ``model_assignments`` where ``tool_type='embeddings'`` (populated
@@ -60,7 +61,7 @@ def _content_hash(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
-def _lookup_cache(db: object | None, model: str, content_hash: str) -> list[float] | None:
+def _lookup_cache(db: Any | None, model: str, content_hash: str) -> list[float] | None:
     """Synchronous embedding_cache read; ``None`` on miss or if unavailable."""
     if db is None or not hasattr(db, "embedding_cache"):
         return None
@@ -80,7 +81,7 @@ def _lookup_cache(db: object | None, model: str, content_hash: str) -> list[floa
     return None
 
 
-def _store_cache(db: object | None, model: str, content_hash: str, vector: list[float]) -> None:
+def _store_cache(db: Any | None, model: str, content_hash: str, vector: list[float]) -> None:
     """Best-effort embedding_cache write; failures never break the caller."""
     if db is None or not hasattr(db, "embedding_cache"):
         return
@@ -93,7 +94,7 @@ def _store_cache(db: object | None, model: str, content_hash: str, vector: list[
 
 async def embed_cached(
     content: str,
-    db: object | None = None,
+    db: Any | None = None,
     model: str | None = None,
     embedding_manager: EmbeddingManager | None = None,
 ) -> list[float]:

@@ -39,9 +39,9 @@ class UsageEvent:
     latency_ms: int
     status: str
     error_message: str | None = None
-    timestamp: datetime = None
+    timestamp: datetime | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Default timestamp to now if the caller did not supply one."""
         if self.timestamp is None:
             self.timestamp = datetime.utcnow()

@@ -60,7 +60,7 @@ class FakeUser:
 
     user_id: int
     organization_id: int
-    api_key_id: int = None
+    api_key_id: int | None = None
 
 
 def _resolver(config: ProxyMemoryConfig):

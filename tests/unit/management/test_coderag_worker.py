@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import git
@@ -37,6 +38,10 @@ class _FakeRow:
     def __init__(self, row_id: int, **fields: object) -> None:
         self.id = row_id
         self.__dict__.update(fields)
+
+    def __getattr__(self, name: str) -> Any:
+        """Match a real Row: unset attrs raise AttributeError; typed Any for mypy."""
+        raise AttributeError(name)
 
 
 class _FakeTable:

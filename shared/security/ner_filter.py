@@ -5,10 +5,13 @@ Fallback backend: HuggingFace transformers NER pipeline (uses existing torch/tra
 If neither is available, the NER tier is skipped and a warning is logged once.
 """
 
+from __future__ import annotations
+
 import importlib.util
 import logging
 import os
 from dataclasses import dataclass
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +77,7 @@ _HF_LABEL_MAP: dict[str, str] = {
 # worker process gets its own NERFilter instance, lazily built on first use
 # (spaCy/Presidio model load is slow -- happens once per worker, not once
 # per request).
-_worker_filter: "NERFilter | None" = None
+_worker_filter: NERFilter | None = None
 
 
 def ner_analyze(text: str, language: str = "en") -> list[dict]:
@@ -127,8 +130,12 @@ class NERFilter:
 
     def __init__(self, spacy_model: str = "en_core_web_lg") -> None:
         """Select and lazily init the best available NER backend (Presidio, then transformers)."""
-        self._analyzer = None
-        self._hf_ner = None
+        # `from __future__ import annotations` (module top) keeps these as
+        # unevaluated strings, so referencing a conditionally-imported class
+        # name here is safe even when that backend package is missing, while
+        # still giving mypy a concrete type to narrow against.
+        self._analyzer: AnalyzerEngine | None = None
+        self._hf_ner: Any | None = None
         self._available = False
         self._mode = "none"
         self._spacy_model = spacy_model
@@ -221,7 +228,12 @@ class NERFilter:
         try:
             from transformers import pipeline as hf_pipeline
 
-            self._hf_ner = hf_pipeline(
+            # transformers' pipeline() stub only declares overloads for its
+            # canonical task literals; "ner" is a documented runtime alias for
+            # "token-classification" (see TASK_ALIASES in
+            # transformers/pipelines/__init__.py) that no overload signature
+            # covers, not a real argument-type mismatch.
+            self._hf_ner = hf_pipeline(  # type: ignore[call-overload]
                 "ner",
                 model="dslim/bert-base-NER",
                 aggregation_strategy="simple",
@@ -270,6 +282,15 @@ class NERFilter:
         return []
 
     def _analyze_presidio(self, text: str, language: str) -> list[NEREntity]:
+        # Only reachable via analyze()'s `self._mode == "presidio"` branch,
+        # which is set exclusively right after a successful `self._analyzer =
+        # AnalyzerEngine(...)` in _init_presidio() -- this guard narrows the
+        # type for mypy without introducing a reachable failure mode; if it
+        # ever did trigger, analyze()'s surrounding try/except already
+        # degrades this to the same "NER analysis error" fail-open path as
+        # any other exception here.
+        if self._analyzer is None:
+            raise RuntimeError("NER filter in presidio mode with no analyzer initialized")
         results = self._analyzer.analyze(text=text, language=language)
         return [
             NEREntity(
@@ -283,6 +304,10 @@ class NERFilter:
         ]
 
     def _analyze_transformers(self, text: str) -> list[NEREntity]:
+        # Same reachability guarantee as _analyze_presidio's guard above, for
+        # the "transformers" mode / self._hf_ner pairing.
+        if self._hf_ner is None:
+            raise RuntimeError("NER filter in transformers mode with no pipeline initialized")
         results = self._hf_ner(text)
         entities = []
         for r in results:

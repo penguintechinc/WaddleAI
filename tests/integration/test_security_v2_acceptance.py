@@ -38,7 +38,7 @@ library differs from the production DAL wrapper.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import sqlalchemy as sa
@@ -56,6 +56,8 @@ from shared.security.content_filter import ContentFilter
 from shared.security.policy_engine import SecurityPolicyEngine
 from shared.security.policy_resolver import PolicyResolver, _CandidateRow
 from shared.security.prompt_security import PromptSecurityScanner
+from shared.utils.llm_connectors import LLMConnector
+from shared.utils.request_router import LLMRequestRouter
 
 _SSN = "123-45-6789"  # noqa: S105 -- test fixture SSN pattern, not a credential
 
@@ -245,7 +247,15 @@ def _build_pipeline(
             bypass_resolver=bypass,
             features=features,
         ),
-        DispatchStage("dispatch", StaticRouter(), {"openai": connector}),
+        # cast(): StaticRouter/StubConnector are duck-typed test doubles for
+        # LLMRequestRouter/LLMConnector that intentionally skip the real
+        # classes' network setup; cast() only narrows the static type for
+        # DispatchStage's constructor, no runtime check or behavior change.
+        DispatchStage(
+            "dispatch",
+            cast(LLMRequestRouter, StaticRouter()),
+            {"openai": cast(LLMConnector, connector)},
+        ),
         SecurityOutStage(
             "security_out",
             content_filter,

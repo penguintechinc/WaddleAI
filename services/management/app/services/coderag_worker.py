@@ -19,9 +19,13 @@ import logging
 import os
 import tempfile
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, cast
 
 from shared.knowledge.code_chunker import CodeChunkDraft, chunk_code
 from shared.knowledge.embed import embed_cached
+
+if TYPE_CHECKING:
+    from penguin_dal.db import DB
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +88,16 @@ class CodeRagWorker:
         """Bind the worker to a penguin-dal handle and a scratch workdir for clones."""
         self.db = db
         self.workdir = workdir or tempfile.gettempdir()
+
+    @property
+    def _dal(self) -> DB:
+        """Narrow ``self.db`` to penguin-dal's ``DB`` for the query methods below.
+
+        The constructor keeps ``db: object`` so tests can inject a lightweight
+        fake without satisfying penguin-dal's full interface; this cast only
+        affects mypy inside the real DB-touching methods, no runtime check.
+        """
+        return cast("DB", self.db)
 
     async def index(
         self, repo_id: int, branch: str | None = None, trigger: str = "manual"
@@ -169,19 +183,19 @@ class CodeRagWorker:
     # -- DB/git IO (thin, mockable) -------------------------------------
 
     def _fetch_repo(self, repo_id: int) -> dict | None:
-        row = self.db(self.db.code_repos.id == repo_id).select().first()
+        row = self._dal(self._dal.code_repos.id == repo_id).select().first()
         if row is None:
             return None
         return {"id": row.id, "org_id": row.org_id, "source_url": row.source_url}
 
     def _fetch_repo_by_source_url(self, source_url: str) -> dict | None:
-        row = self.db(self.db.code_repos.source_url == source_url).select().first()
+        row = self._dal(self._dal.code_repos.source_url == source_url).select().first()
         if row is None:
             return None
         return {"id": row.id, "org_id": row.org_id, "source_url": row.source_url}
 
     def _fetch_all_repo_ids(self) -> list[int]:
-        rows = self.db(self.db.code_repos.index_status != "disabled").select()
+        rows = self._dal(self._dal.code_repos.index_status != "disabled").select()
         return [r.id for r in rows]
 
     def _clone_or_pull(self, source_url: str, branch: str, repo_id: int) -> tuple[str, str]:
@@ -216,25 +230,25 @@ class CodeRagWorker:
         return result
 
     def _fetch_existing_hashes(self, repo_id: int, branch_ref: str) -> dict[str, frozenset[str]]:
-        chunks = self.db.code_chunks
-        rows = self.db((chunks.repo_id == repo_id) & (chunks.branch_ref == branch_ref)).select()
+        chunks = self._dal.code_chunks
+        rows = self._dal((chunks.repo_id == repo_id) & (chunks.branch_ref == branch_ref)).select()
         by_path: dict[str, set[str]] = {}
         for row in rows:
             by_path.setdefault(row.path, set()).add(row.content_hash)
         return {path: frozenset(hashes) for path, hashes in by_path.items()}
 
     def _delete_path_chunks(self, repo_id: int, branch_ref: str, path: str) -> None:
-        self.db(
-            (self.db.code_chunks.repo_id == repo_id)
-            & (self.db.code_chunks.branch_ref == branch_ref)
-            & (self.db.code_chunks.path == path)
+        self._dal(
+            (self._dal.code_chunks.repo_id == repo_id)
+            & (self._dal.code_chunks.branch_ref == branch_ref)
+            & (self._dal.code_chunks.path == path)
         ).delete()
-        self.db.commit()
+        self._dal.commit()
 
     def _insert_chunk(
         self, repo_id: int, branch_ref: str, draft: CodeChunkDraft, vector: list[float]
     ) -> None:
-        self.db.code_chunks.insert(
+        self._dal.code_chunks.insert(
             repo_id=repo_id,
             branch_ref=branch_ref,
             path=draft.path,
@@ -247,13 +261,13 @@ class CodeRagWorker:
             embedding=vector,
             status="active",
         )
-        self.db.commit()
+        self._dal.commit()
 
     def _mark_indexed(self, repo_id: int, last_commit: str) -> None:
-        self.db(self.db.code_repos.id == repo_id).update(
+        self._dal(self._dal.code_repos.id == repo_id).update(
             index_status="indexed", last_commit=last_commit
         )
-        self.db.commit()
+        self._dal.commit()
 
 
 def create_coderag_worker(db: object, workdir: str | None = None) -> CodeRagWorker:

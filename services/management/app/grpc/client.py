@@ -417,7 +417,7 @@ class AILBModuleClient:
         provider_type: str,
         endpoint_url: str,
         api_key: str = "",
-        models: list[str] = None,
+        models: list[str] | None = None,
         priority: int = 100,
     ) -> RouteConfig:
         """Create a route configuration for an AI provider."""

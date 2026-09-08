@@ -11,6 +11,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
+from penguin_dal.db import DB
 from quart import g, jsonify, request
 
 from shared.auth.rbac import Permission
@@ -23,6 +24,19 @@ from .auth import require_auth, require_scope
 logger = logging.getLogger(__name__)
 
 _VALID_SCOPE_TYPES = {"global", "org", "key"}
+
+
+def _db() -> DB:
+    """Return the process-wide penguin-dal handle, narrowed away from ``None``.
+
+    ``extensions.db`` is declared ``DB | None`` because it starts unset before
+    ``init_db()`` runs at startup; every route below only executes after that
+    point, so this narrows the type for mypy without adding any reachable
+    failure mode (mirrors the same helper in ``model_aliases.py``/``fleet.py``).
+    """
+    if db is None:
+        raise RuntimeError("database not initialized")
+    return db
 
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
@@ -102,12 +116,12 @@ async def list_cache_configs() -> tuple:
     scope_ref = request.args.get("scope_ref")
 
     def _fetch():
-        query = db.cache_configs.id > 0
+        query = _db().cache_configs.id > 0
         if scope_type:
-            query &= db.cache_configs.scope_type == scope_type
+            query &= _db().cache_configs.scope_type == scope_type
         if scope_ref is not None:
-            query &= db.cache_configs.scope_ref == scope_ref
-        return db(query).select(orderby=db.cache_configs.id)
+            query &= _db().cache_configs.scope_ref == scope_ref
+        return _db()(query).select(orderby=_db().cache_configs.id)
 
     rows = await asyncio.to_thread(_fetch)
     return jsonify({"status": "success", "data": [_row_to_dict(r) for r in rows]}), 200
@@ -117,7 +131,9 @@ async def list_cache_configs() -> tuple:
 @require_auth
 async def get_cache_config(config_id: int) -> tuple:
     """Get a single cache config row by ID."""
-    row = await asyncio.to_thread(lambda: db(db.cache_configs.id == config_id).select().first())
+    row = await asyncio.to_thread(
+        lambda: _db()(_db().cache_configs.id == config_id).select().first()
+    )
     if not row:
         return jsonify({"status": "error", "error": "Cache config not found"}), 404
     return jsonify({"status": "success", "data": _row_to_dict(row)}), 200
@@ -144,14 +160,14 @@ async def create_cache_config() -> tuple:
         return auth_error
 
     def _create():
-        scope_query = (db.cache_configs.scope_type == scope_type) & (
-            db.cache_configs.scope_ref == scope_ref
+        scope_query = (_db().cache_configs.scope_type == scope_type) & (
+            _db().cache_configs.scope_ref == scope_ref
         )
-        existing = db(scope_query).select().first()
+        existing = _db()(scope_query).select().first()
         if existing:
             return "conflict", existing
 
-        new_id = db.cache_configs.insert(
+        new_id = _db().cache_configs.insert(
             scope_type=scope_type,
             scope_ref=scope_ref,
             exact_enabled=data.get("exact_enabled", True),
@@ -163,8 +179,8 @@ async def create_cache_config() -> tuple:
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
         )
-        db.commit()
-        return "created", db(db.cache_configs.id == new_id).select().first()
+        _db().commit()
+        return "created", _db()(_db().cache_configs.id == new_id).select().first()
 
     action, row = await asyncio.to_thread(_create)
 
@@ -190,7 +206,7 @@ async def update_cache_config(config_id: int) -> tuple:
         return jsonify({"status": "error", "error": "Request body required"}), 400
 
     existing = await asyncio.to_thread(
-        lambda: db(db.cache_configs.id == config_id).select().first()
+        lambda: _db()(_db().cache_configs.id == config_id).select().first()
     )
     if not existing:
         return jsonify({"status": "error", "error": "Cache config not found"}), 404
@@ -217,9 +233,9 @@ async def update_cache_config(config_id: int) -> tuple:
     update_fields["updated_at"] = datetime.utcnow()
 
     def _update():
-        db(db.cache_configs.id == config_id).update(**update_fields)
-        db.commit()
-        return db(db.cache_configs.id == config_id).select().first()
+        _db()(_db().cache_configs.id == config_id).update(**update_fields)
+        _db().commit()
+        return _db()(_db().cache_configs.id == config_id).select().first()
 
     row = await asyncio.to_thread(_update)
     await _invalidate_scope(scope_type, scope_ref)
@@ -232,7 +248,7 @@ async def update_cache_config(config_id: int) -> tuple:
 async def delete_cache_config(config_id: int) -> tuple:
     """Delete a cache config row (falls back to the next-broader scope)."""
     existing = await asyncio.to_thread(
-        lambda: db(db.cache_configs.id == config_id).select().first()
+        lambda: _db()(_db().cache_configs.id == config_id).select().first()
     )
     if not existing:
         return jsonify({"status": "error", "error": "Cache config not found"}), 404
@@ -244,8 +260,8 @@ async def delete_cache_config(config_id: int) -> tuple:
         return auth_error
 
     def _delete():
-        db(db.cache_configs.id == config_id).delete()
-        db.commit()
+        _db()(_db().cache_configs.id == config_id).delete()
+        _db().commit()
 
     await asyncio.to_thread(_delete)
     await _invalidate_scope(scope_type, scope_ref)

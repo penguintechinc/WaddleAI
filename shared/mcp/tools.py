@@ -228,8 +228,8 @@ class AdminConfigService(Protocol):
 
 
 def _tag_provenance(
-    item: dict[str, Any] | None, *, source: str, trust_tier: str = "retrieved"
-) -> dict[str, Any] | None:
+    item: dict[str, Any], *, source: str, trust_tier: str = "retrieved"
+) -> dict[str, Any]:
     """Mark retrieved content as data, never instructions (§9.6/§9.7).
 
     Every tool result that echoes external or stored content carries
@@ -237,9 +237,16 @@ def _tag_provenance(
     itself -- can tell "this came back from a search" apart from "this is
     a system instruction."
     """
+    return {**item, "_provenance": {"source": source, "trust_tier": trust_tier}}
+
+
+def _tag_provenance_optional(
+    item: dict[str, Any] | None, *, source: str, trust_tier: str = "retrieved"
+) -> dict[str, Any] | None:
+    """``_tag_provenance`` for lookups that may legitimately miss (e.g. ``get_symbol``)."""
     if item is None:
         return None
-    return {**item, "_provenance": {"source": source, "trust_tier": trust_tier}}
+    return _tag_provenance(item, source=source, trust_tier=trust_tier)
 
 
 def _mark_sensitive(payload: dict[str, Any]) -> dict[str, Any]:
@@ -296,7 +303,7 @@ class WaddleAITools:
         """Symbol-exact chunk lookup, scoped to the caller's org."""
         self._require_enabled()
         result = await self._knowledge.get_symbol(org_id=self._ctx.org_id, symbol=symbol, repo=repo)
-        return _tag_provenance(result, source="get_symbol")
+        return _tag_provenance_optional(result, source="get_symbol")
 
     async def search_docs(self, query: str, ecosystem: str | None = None) -> list[dict[str, Any]]:
         """Cached-docs search, optionally scoped to a package ecosystem."""

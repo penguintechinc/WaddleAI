@@ -104,12 +104,18 @@ class _FakeSelectResult(list):
 class _FakeQueryResult:
     """Result of ``db(predicate)`` -- supports select/update/delete."""
 
-    def __init__(self, db: "FakeDB", table_name: str, predicate: _Predicate | None) -> None:
+    def __init__(self, db: "FakeDB", table_name: str | None, predicate: _Predicate | None) -> None:
         self._db = db
         self._table_name = table_name
         self._predicate = predicate
 
     def _matching_rows(self) -> list[dict]:
+        # table_name is only None when constructed via db() with no predicate
+        # (no table to infer) -- there is nothing to match against, so this
+        # mirrors the prior runtime behavior (an always-empty result) rather
+        # than changing it.
+        if self._table_name is None:
+            return []
         rows = self._db._tables.setdefault(self._table_name, [])
         if self._predicate is None:
             return rows
@@ -129,7 +135,11 @@ class _FakeQueryResult:
     def delete(self) -> int:
         """Delete matching rows; returns the count deleted."""
         matched = self._matching_rows()
-        table = self._db._tables[self._table_name]
+        if self._table_name is None:
+            # No table to infer (db() called with no predicate) -- matched is
+            # already [] in this case, so this preserves the prior no-op.
+            return 0
+        table = self._db._tables.setdefault(self._table_name, [])
         for row in matched:
             table.remove(row)
         return len(matched)
