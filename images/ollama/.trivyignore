@@ -143,3 +143,36 @@ CVE-2026-11824
 # runtime-base shows a Candidate newer than Installed, whichever comes first.
 # The weekly re-triage workflow will flag it if a fix lands sooner.
 CVE-2026-76642
+
+# --- 2026-09-08: DB drift round two, after CVE-2026-76642 -------------------
+# The 76642 entry above worked (it no longer appears in the gate output), but
+# the vuln DB moved again between 09-07 and 09-08 and surfaced six more. Two
+# distinct categories, verified separately rather than suppressed as a batch.
+#
+# (a) Debian base packages, no fix published. Trivy status "affected" with an
+#     EMPTY FixedVersion against installed util-linux 2.41.5-0+deb13u1 and
+#     systemd 257.13-1~deb13u1 -- same shape and same treatment as the rest of
+#     category 2. Nothing in this image invokes an external mount helper,
+#     nsenter, or systemd-homed, so none of these are reachable from its
+#     workload.
+CVE-2026-78408
+CVE-2026-78409
+CVE-2026-78410
+CVE-2026-16742
+#
+# (b) Go modules embedded in the vendored upstream binary -- category 1, but
+#     these two report a FixedVersion, so they were checked before being
+#     suppressed rather than assumed unfixable:
+#       golang.org/x/crypto v0.43.0 (CVE-2026-56854, CRITICAL) -> fixed 0.55.0
+#       golang.org/x/image  v0.22.0 (CVE-2026-46603, HIGH)     -> fixed 0.45.0
+#     The fixed version is the MODULE's, not any consumable ollama release:
+#     go.mod at v0.32.13 (pinned), v0.32.15 and v0.33.3 (latest stable, as of
+#     2026-09-08) ALL still pin x/crypto v0.43.0 and x/image v0.22.0, so
+#     bumping the base image fixes neither. Resolving them needs a from-source
+#     rebuild with patched modules, explicitly out of scope for spec §10.2.
+#     CVE-2026-56854 is in golang.org/x/crypto/ssh; this image serves HTTP and
+#     exposes no SSH surface, so the package is linked but not reached.
+#     ESCALATE AND RE-EVALUATE if an ollama release bumps x/crypto, or if the
+#     deployment ever exposes an SSH listener. Review by 2026-12-08.
+CVE-2026-56854
+CVE-2026-46603
