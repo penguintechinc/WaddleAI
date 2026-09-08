@@ -32,7 +32,7 @@ class TestConfigStoreCRUD:
         models = await store.list_models()
         names = {m["name"] for m in models}
         assert "codellama:7b" in names
-        assert "gemma4:12b" in names  # foreman -- coding role
+        assert "gemma4:12b-it-qat" in names  # foreman -- coding role
         assert "gemma4:e4b" in names  # tester -- non-coding role
         assert "nomic-embed-text" in names
 

@@ -56,12 +56,12 @@ and `gemma4:2b` does not exist.
 ### General Purpose Models
 
 `gemma4:e4b` is the default for every role. For **more complex operations —
-coding especially — `gemma4:12b` is the recommendation**, wherever the host can
+coding especially — `gemma4:12b-it-qat` is the recommendation**, wherever the host can
 carry it (~8GB VRAM):
 
 ```bash
 # Recommended default for general local generation
-ollama pull gemma4:12b
+ollama pull gemma4:12b-it-qat
 
 # Larger, if the GPU allows
 ollama pull gemma4:26b
@@ -406,12 +406,21 @@ Use WaddleAI routing:
 | Use Case | Model | Size | Quality |
 |----------|-------|------|---------|
 | Routing / quick / light | gemma4:e4b | ~4GB | Fast — supported minimum |
-| Complex ops / coding | gemma4:12b | ~8GB | Recommended, not the default — opt in |
+| Complex ops / coding | gemma4:12b-it-qat | ~8GB | Recommended, not the default — opt in |
+| Embeddings | nomic-embed-text | ~0.3GB | Required for memory/RAG |
 | Code | codellama | 4GB | Excellent |
 | Analysis | mixtral | 26GB | Excellent |
 | Embeddings | nomic-embed-text | 274MB | Good |
 
 ### By Hardware
+
+> **Sizing from VRAM, not download size.** The complete e4b-only set
+> (`gemma4:e4b` + `shieldgemma:2b` + `nomic-embed-text`) is **5.72 GB
+> resident**, measured with all three loaded at once. 8 GB is the floor and
+> 12 GB+ the recommendation — see
+> [GPU requirements](../getting-started/installation.md#gpu-requirements-local-model-serving).
+> Note `gemma4:e4b` is 9.61 GB on disk but only 3.26 GB resident; the download
+> size is misleading.
 
 **4GB RAM, No GPU**:
 - gemma4:e4b (routing; tight)

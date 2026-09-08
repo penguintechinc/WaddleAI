@@ -156,7 +156,7 @@ def _default_models() -> list[OllamaModelDef]:
     return [
         OllamaModelDef("codellama:7b", "executor", True, 4096),
         OllamaModelDef("codellama:13b", "executor-escalation", False, 8192),
-        OllamaModelDef("gemma4:12b", "foreman", True, 2048),
+        OllamaModelDef("gemma4:12b-it-qat", "foreman", True, 2048),
         OllamaModelDef("gemma4:e4b", "tester", False, 1024),
         OllamaModelDef("nomic-embed-text", "embeddings", True, 512),
     ]
@@ -166,7 +166,7 @@ def _default_agents() -> list[AgentDef]:
     return [
         AgentDef(
             name="foreman",
-            model="ollama/gemma4:12b",
+            model="ollama/gemma4:12b-it-qat",
             mode="primary",
             prompt_file="agents/foreman.md",
             description="Orchestrator. Plans, delegates, validates. NEVER writes code.",
@@ -191,7 +191,7 @@ def _default_agents() -> list[AgentDef]:
         ),
         AgentDef(
             name="explorer",
-            model="ollama/gemma4:12b",
+            model="ollama/gemma4:12b-it-qat",
             mode="subagent",
             prompt_file="agents/explorer.md",
             description="Read-only codebase exploration.",
@@ -221,7 +221,7 @@ def _default_agents() -> list[AgentDef]:
             mode="subagent",
             prompt_file="agents/tester.md",
             description="Runs tests, linters, security scans.",
-            escalation_model="ollama/gemma4:12b",
+            escalation_model="ollama/gemma4:12b-it-qat",
         ),
         AgentDef(
             name="researcher",

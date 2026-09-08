@@ -72,7 +72,7 @@ jobs:
           - **Node.js**: 18+ (for extension development)
           - **Recommended Models**:
             - `gemma4:e4b` - Default for research and orchestration
-            - `gemma4:12b` - Recommended for complex ops like coding
+            - `gemma4:12b-it-qat` - Recommended for complex ops like coding
             - `qwen2.5-coder:7b` - Code execution
             - `deepseek-coder:6.7b` - Planning and debugging
             - `nomic-embed-text` - Embeddings for memory

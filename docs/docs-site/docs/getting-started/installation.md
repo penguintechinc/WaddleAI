@@ -11,6 +11,269 @@ WaddleAI has three deployable services — **proxy** (OpenAI-compatible data pla
 - `kubectl` + Helm v4, and a local cluster (MicroK8s on Linux, Docker Desktop Kubernetes on macOS/Windows) if you want the full stack running in Kubernetes
 - `git`, `uv` (for `make venv`)
 
+## GPU requirements (local model serving)
+
+Only needed if you serve models locally via Ollama. A deployment that routes
+exclusively to commercial providers needs no GPU at all.
+
+### The e4b-only baseline
+
+The minimum viable local set is three models — the routing classifier, the
+always-on security auditor, and the embedding model:
+
+| Model | Role | VRAM |
+|---|---|---|
+| `gemma4:e4b` | routing classifier, summarize, docs-fetch | 3.26 GB |
+| `shieldgemma:2b` | security auditor (always on) | 2.14 GB |
+| `nomic-embed-text` | embeddings | 0.32 GB |
+| **Total** | | **5.72 GB** |
+
+Measured with all three resident simultaneously on a live host, Q4_K_M
+quantization. These are **base weights at idle** — the KV cache grows on top of
+them as context length and concurrency increase, and that growth is what
+actually determines whether a card holds up.
+
+### Minimum and recommended
+
+| | VRAM | Example cards | Reality |
+|---|---|---|---|
+| **Minimum** | 8 GB | RTX 4060, RTX 5060 | Works. ~2.3 GB left for KV cache after the base set — enough for short contexts and low concurrency, tight for anything else |
+| **Recommended** | 12 GB+ | RTX 3060 12GB, RTX 4070 | Comfortable headroom for long contexts, concurrent requests, and `gemma4:12b` for coding roles |
+
+8 GB is a real floor, not a comfortable one. Pushing an 8 GB card to its limit
+with an LLM plus two embedding-class models leaves very little room for the KV
+cache to expand during long sessions or high-throughput retrieval. Budget for a
+display buffer too if the card is also driving a monitor.
+
+### Adding gemma4:12b for coding
+
+`gemma4:12b` is the default for coding roles (orchestration, exploration) and
+costs **8.42 GB** once it has context — more than the entire e4b-only set.
+
+**The binding constraint is a config default, not VRAM.** Ollama's
+`OLLAMA_MAX_LOADED_MODELS` defaults to **3**. WaddleAI's full local set is
+**four** models — `gemma4:e4b`, `gemma4:12b`, `shieldgemma:2b`,
+`nomic-embed-text` — so one is always evicted no matter how much VRAM the card
+has. Measured on a 16 GB host:
+
+| Models requested | Resident | Total VRAM |
+|---|---|---|
+| `e4b`, `shieldgemma`, `nomic` | 3 | 5.72 GB |
+| `12b`, `shieldgemma`, `nomic` | 3 | 10.89 GB |
+| `e4b`, `12b`, `shieldgemma` | 3 | **13.49 GB** |
+| all four | **3** — one evicted | 5.72 GB |
+
+The third row is the proof: 13.49 GB stays resident without complaint, so
+memory is not what is stopping the fourth model. Buying a larger card does not
+fix this.
+
+```bash
+# on the Ollama host
+OLLAMA_MAX_LOADED_MODELS=4   # or higher, if you serve more models
+```
+
+**Why it matters.** `gemma4:e4b` is the routing classifier, so it runs on every
+request that reaches stage 2; `gemma4:12b` serves coding requests. If the cap
+evicts one of them, a coding workload alternates between the two and each
+alternation is an evict-and-reload. Nothing errors — throughput simply
+collapses, and the cause is invisible unless you check `/api/ps`:
+
+```bash
+curl -s http://<host>:11434/api/ps | python3 -m json.tool | grep -E '"name"|size_vram'
+```
+
+Fewer models listed than you serve means the cap is evicting, and raising
+`OLLAMA_MAX_LOADED_MODELS` — not more VRAM — is the fix.
+
+**VRAM still matters, separately.** Once the cap is raised, all four must
+actually fit: 5.72 GB (baseline) + 8.42 GB (`12b` with context) ≈ **14.2 GB of
+weights**, plus KV headroom.
+
+Serving all four concurrently is an **xx80/xx90-class** requirement — an RTX
+4080, 3090, 4090, or a 16 GB mobile xx80. Mid-range cards can serve the
+e4b-only baseline comfortably; they cannot hold a 12B alongside it with room
+for context to grow.
+
+### Capacity and throughput are different requirements
+
+**VRAM answers "do the weights fit". It does not answer "can this GPU serve
+them".** Size for both, because they fail differently:
+
+| Axis | Set by | What runs out |
+|---|---|---|
+| **Capacity** | VRAM | Models get evicted, or refuse to load |
+| **Throughput** | Memory bandwidth, then compute | Everything still works, just slowly |
+
+A 24 GB card built on a mid-range die can *hold* eight models and still serve
+them poorly — generation speed follows memory bandwidth, not capacity. The
+inverse fails too: a fast 8 GB card has the throughput and cannot hold the
+stack. Neither number alone is a requirement.
+
+Measured on a 16 GB mobile RTX 3080, Q4_K_M:
+
+| Model | Generation | Prompt eval | Cold load |
+|---|---|---|---|
+| `gemma4:e4b` | 86.8 tok/s | 192.7 tok/s | 5.76 s |
+| `gemma4:12b-it-qat` | 48.4 tok/s | 523 tok/s | 5.19 s |
+
+Note what scales and what does not. Generation is **1.9× slower** on the larger
+model while prompt evaluation is only **1.14× slower** — token generation is
+sequential and bandwidth-bound, so it tracks model size; prompt processing is
+parallel and compute-bound, so it largely does not. A card chosen for capacity
+alone, with modest bandwidth, gets the worst of that trade.
+
+### Concurrency: how many models may generate at once
+
+Resident model count and *concurrently generating* model count are different
+limits. Being loaded costs VRAM; generating costs bandwidth.
+
+Measured on the 16 GB mobile RTX 3080, as a percentage of each model's solo
+speed:
+
+| Generating at once | Per-stream throughput | Aggregate work |
+|---|---|---|
+| 1 | 100% | 1.00× |
+| **2** | `e4b` **100%**, `shieldgemma` 60% | **1.60×** |
+| 3 | `e4b` 42%, `shieldgemma` 37%, `12b` 55% | **1.34×** |
+
+Two concurrent generations are close to free — the larger model lost nothing
+measurable and aggregate work rose to 1.60×. **Three is past the knee**:
+aggregate throughput *falls* to 1.34×, so the third request does not merely wait
+its turn, it makes the other two slower than the work it contributes. Beyond the
+ceiling you lose latency and throughput together.
+
+**Rule of thumb — the MAXIMUM number of LLMs that should be generating at once
+on one GPU.** These are ceilings, not targets: staying under them is fine, and
+exceeding them costs aggregate throughput, not just per-request latency.
+
+| GPU class | At most |
+|---|---|
+| xx70 and below | 1 generating |
+| xx80 | 2 generating |
+| xx90 | 3 generating |
+
+The xx80 row is measured (above). The xx70 and xx90 rows follow the tier
+pattern and have not been measured here — treat them as starting points and
+check with the aggregate-throughput method above if it matters for your
+deployment: if total work falls when you add a stream, you are past the ceiling.
+
+Embedding models do not count against this. Their work is a single forward pass
+rather than sequential token generation, and `nomic-embed-text` at 0.32 GB does
+not contend meaningfully.
+
+### Other vendors and NVIDIA A-series
+
+**The xx70/xx80/xx90 table above is NVIDIA consumer naming and does not
+generalise.** The ceiling is set by memory bandwidth, not by a model number, so
+for anything else use the method rather than a table: run one generation, then
+two, then three, and compute aggregate work as the sum of each stream's
+percentage of its solo throughput. **The ceiling is the count after which
+aggregate work stops rising.** That is exactly how the xx80 = 2 figure above was
+derived, and it works on any vendor.
+
+Starting points by family, none of them measured here:
+
+| Family | Start at | Notes |
+|---|---|---|
+| NVIDIA `A2`, `A16`, `RTX A2000`/`A3000` | 1 | Bandwidth well below a consumer xx80 |
+| NVIDIA `A10`, `A40`, `RTX A4000`–`A6000` | 2 | GDDR6, broadly xx80-class bandwidth |
+| NVIDIA `A100`, `A30` | 3+ | HBM2e bandwidth far exceeds consumer cards; see MIG below |
+| AMD RX 7900 XTX / XT, PRO W7900 | 2 | Bandwidth comparable to a consumer xx80 |
+| AMD Instinct `MI250`/`MI300X` | 3+ | HBM, datacenter-class |
+| Intel Arc (via Vulkan) | 1 | See the Vulkan caveat below |
+
+**MIG changes the question entirely.** `A100` and `A30` can be partitioned into
+isolated instances with dedicated SMs and memory. On a MIG-partitioned card the
+limit applies **per instance**, not per physical GPU — one generating LLM per
+instance is the natural mapping, and it gives hard isolation that time-slicing
+a whole GPU does not.
+
+#### Vendor support is a gate before any sizing
+
+Sizing is irrelevant if Ollama will not use the card. Per
+[Ollama's GPU documentation](https://github.com/ollama/ollama/blob/main/docs/gpu.mdx):
+
+| Vendor | Requirement | Watch out for |
+|---|---|---|
+| NVIDIA | Compute capability 5.0+, driver 550+ (570+ for CC 5.0–6.2) | — |
+| AMD | ROCm v7 on Linux; ROCm v7 / HIP7 on Windows | **The Windows supported list is narrower than Linux.** Unsupported-but-close cards may work via `HSA_OVERRIDE_GFX_VERSION` |
+| Intel | **Vulkan only** — no dedicated backend | Ollama's docs note Vulkan provides less information for optimal scheduling. Disable with `OLLAMA_VULKAN=0` if it misbehaves |
+
+Because Intel runs through Vulkan rather than a vendor compute stack, treat
+CUDA/ROCm-derived heuristics as unreliable there and measure before committing
+to a concurrency figure.
+
+Size the two limits separately:
+
+- **Resident** count → VRAM and `OLLAMA_MAX_LOADED_MODELS`
+- **Concurrently generating** count → memory bandwidth, roughly 2 per xx80
+
+A deployment can therefore hold four models resident and still want to serve
+only two generations at a time. Those are not in conflict; they are answers to
+different questions.
+
+**Cold load is ~5 s per model.** That is the real cost of the eviction described
+above: every evict-and-reload cycle spends roughly five seconds before a single
+token is produced. A thrashing stack is not marginally slower, it is unusable.
+
+| Serving | VRAM | Example cards | Notes |
+|---|---|---|---|
+| e4b only | 8 GB min / 12 GB rec | RTX 4060 / RTX 3060 12GB | See table above |
+| **e4b + 12b** | **16 GB** | RTX 4080, RTX 3090, mobile RTX 3080 16GB | Verified: 13.49 GB co-resident. Requires Q4 and managed context |
+| e4b + 12b, comfortable | **24 GB** | RTX 3090 / 4090 | Room for Q8 or unquantized 12B and 8K+ contexts |
+
+Quantization is what makes this fit. At Ollama's default **Q4_K_M** the 12B
+model is ~7.5–8.5 GB; at Q8 it is ~13–14 GB and at BF16 ~24–27 GB. A stack that
+fits comfortably at Q4 will OOM at Q8 on the same card — or worse, Ollama
+silently offloads layers to system RAM and generation speed collapses without an
+error.
+
+An 8 GB card cannot host `12b` alongside the baseline at all. It will OOM
+immediately or fall back to CPU/RAM offloading.
+
+#### Squeezing 12b onto a tight card: the QAT tag
+
+`gemma4:12b-it-qat` is the **default** for coding roles. QAT quantizes during
+training rather than after, so it preserves more reasoning quality than
+post-training quantization at a comparable — slightly smaller — footprint.
+
+Measured on the 16 GB mobile RTX 3080, both at Q4-class quantization, same
+prompts and token budgets:
+
+| | `gemma4:12b` | `gemma4:12b-it-qat` |
+|---|---|---|
+| Disk | 7.56 GB | **7.15 GB** |
+| Resident VRAM | 8.42 GB | **8.02 GB** |
+| Generation | 45.9 tok/s | **48.4 tok/s** |
+| Prompt eval | 446 tok/s | **523 tok/s** |
+| Cold load | 5.19 s | 5.19 s |
+| Structured-output validity | 6/6 | 6/6 |
+
+QAT is smaller *and* faster on every axis, and output quality held on
+side-by-side technical prompts. That is why it is the default.
+
+**The 0.40 GB saving does not change how many models stay resident**, because
+that ceiling is `OLLAMA_MAX_LOADED_MODELS` (see above), not VRAM. Budget the
+saving as headroom for context growth, not as room for another model.
+
+Whichever 12B tag is loaded, verify the models you serve are all actually
+resident:
+
+```bash
+curl -s http://<host>:11434/api/ps | python3 -m json.tool | grep -E '"name"|size_vram'
+```
+
+Fewer models listed than you serve means something is being evicted — check
+`OLLAMA_MAX_LOADED_MODELS` first, VRAM second.
+
+### A note on model sizes
+
+Do not size from the download. `gemma4:e4b` is **9.61 GB on disk but 3.26 GB
+resident**, because its MatFormer packaging ships more weights than the
+effective-4B submodel actually loads. By contrast `gemma4:12b` is 7.56 GB on
+disk and 8.09 GB resident. The disk figure alone would tell you e4b is the more
+expensive model, which is backwards.
+
 ## Option A: Kubernetes with Helm (recommended)
 
 The Helm chart at `k8s/helm/waddleai` is the only supported deployment path for every environment (alpha, beta, production). Full walkthrough, values-file reference, and ingress/TLS setup: [Kubernetes Deployment](../deployment/kubernetes.md).
