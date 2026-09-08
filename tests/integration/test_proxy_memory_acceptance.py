@@ -64,7 +64,7 @@ class TogglableFeatures:
         """Set the flag's return value."""
         self.enabled = enabled
 
-    def is_feature_enabled(self, flag_key: str, distinct_id: str = None) -> bool:
+    def is_feature_enabled(self, flag_key: str, distinct_id: str | None = None) -> bool:
         """Return the configured enabled value."""
         return self.enabled
 
@@ -81,7 +81,7 @@ class StubDispatchConnector:
             "finish_reason": "stop",
         }
 
-    async def count_tokens(self, text: str, model: str = None) -> int:
+    async def count_tokens(self, text: str, model: str | None = None) -> int:
         """Return the word count as a stand-in token count."""
         return len(text.split())
 

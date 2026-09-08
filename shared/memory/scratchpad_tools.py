@@ -56,6 +56,10 @@ async def scratchpad_put(
         return {"error": {"type": "invalid_arguments", "message": "key and value are required"}}
 
     org_id, user_id = _org_and_user(user_context)
+    if org_id is None or user_id is None:
+        return {
+            "error": {"type": "invalid_context", "message": "missing organization or user identity"}
+        }
     try:
         result = await store.put(org_id, session_id, user_id, key, value)
     except (ScratchpadValueTooLargeError, ScratchpadKeyLimitExceededError) as exc:
@@ -87,6 +91,10 @@ async def scratchpad_get(
         return {"error": {"type": "invalid_arguments", "message": "key is required"}}
 
     org_id, user_id = _org_and_user(user_context)
+    if org_id is None or user_id is None:
+        return {
+            "error": {"type": "invalid_context", "message": "missing organization or user identity"}
+        }
     value = await store.get(org_id, session_id, user_id, key)
     if value is None:
         return {"error": {"type": "not_found", "message": f"no scratchpad value for key {key!r}"}}
@@ -107,6 +115,10 @@ async def scratchpad_list(
         }
 
     org_id, user_id = _org_and_user(user_context)
+    if org_id is None or user_id is None:
+        return {
+            "error": {"type": "invalid_context", "message": "missing organization or user identity"}
+        }
     infos = await store.list(org_id, session_id, user_id)
     return {
         "keys": [

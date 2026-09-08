@@ -1,5 +1,7 @@
 """Determinism-eligibility matrix + SHA-256 exact-key derivation (spec §6.1)."""
 
+from typing import Any
+
 import pytest
 
 from shared.cache.keys import ExactKeyParts, derive_exact_key, is_exact_eligible
@@ -105,7 +107,7 @@ class TestExactKeyDerivation:
 
     def _parts(self, **overrides) -> ExactKeyParts:
         """Parts."""
-        base = dict(
+        base: dict[str, Any] = dict(
             org_id=1,
             model_class="gpt-4o",
             messages=[{"role": "user", "content": "Hello"}],

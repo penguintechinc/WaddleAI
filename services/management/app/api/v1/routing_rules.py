@@ -14,6 +14,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
+from penguin_dal.db import DB
 from quart import Blueprint, g, jsonify, request
 
 from shared.auth.rbac import Permission
@@ -26,6 +27,19 @@ logger = logging.getLogger(__name__)
 routing_rules_bp = Blueprint("routing_rules", __name__, url_prefix="/api/v1/routing/rules")
 
 _WRITABLE_FIELDS = ("name", "priority", "match", "action", "enabled")
+
+
+def _db() -> DB:
+    """Return the process-wide penguin-dal handle, narrowed away from ``None``.
+
+    ``extensions.db`` is declared ``DB | None`` because it starts unset
+    before ``init_db()`` runs at startup; every route below only executes
+    after that point, so this narrows the type for mypy without adding any
+    reachable failure mode.
+    """
+    if db is None:
+        raise RuntimeError("database not initialized")
+    return db
 
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
@@ -44,7 +58,7 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
 
 def _visible_query(user_role: str, user_org_id: int | None):
     """Admin sees every rule; everyone else sees global + their own org's rules."""
-    table = db.routing_rules_v2
+    table = _db().routing_rules_v2
     if user_role == "admin":
         return table.id > 0
     return (table.organization_id == None) | (table.organization_id == user_org_id)  # noqa: E711
@@ -98,13 +112,12 @@ async def get_rule(rule_id: int) -> tuple:
     user_role = g.user.get("role")
     user_org_id = g.user.get("organization_id")
 
-    row = await asyncio.to_thread(
-        lambda: (
-            db(_visible_query(user_role, user_org_id) & (db.routing_rules_v2.id == rule_id))
-            .select()
-            .first()
-        )
-    )
+    def _fetch():
+        database = _db()
+        query = _visible_query(user_role, user_org_id) & (database.routing_rules_v2.id == rule_id)
+        return database(query).select().first()
+
+    row = await asyncio.to_thread(_fetch)
     if not row:
         return jsonify({"status": "error", "error": "Rule not found"}), 404
 

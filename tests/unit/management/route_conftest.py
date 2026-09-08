@@ -4,12 +4,18 @@ This module provides the flask_app, client, and auth token fixtures used by
 all route-level test modules. Import via conftest.py using pytest_plugins.
 """
 
+# Deferred annotations: `_patch[MagicMock]` below is a valid static type but
+# `unittest.mock._patch` is not subscriptable at runtime, so evaluating the
+# annotation eagerly raises TypeError at import and breaks collection for every
+# route test module that loads this plugin.
+from __future__ import annotations
+
 import os
 import sys
 from collections.abc import AsyncGenerator
 from datetime import datetime, timedelta
 from functools import lru_cache
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, _patch, patch
 
 import jwt as _jwt
 import pytest
@@ -39,7 +45,7 @@ def _make_mock_redis() -> MagicMock:
     return mock_redis
 
 
-def _patch_route_module_db(module_name: str, mock_db: MagicMock) -> patch:
+def _patch_route_module_db(module_name: str, mock_db: MagicMock) -> _patch[MagicMock]:
     """Return a patcher that swaps 'db' in a route module with mock_db."""
     return patch(f"{module_name}.db", mock_db)
 
@@ -171,7 +177,10 @@ def make_token(
         role_enum = Role(role)
     except ValueError:
         role_enum = Role.USER
-    permissions = {p.value for p in ROLE_PERMISSIONS.get(role_enum, set())}
+    # UserContext.permissions wants the Permission enum members themselves;
+    # user_context_to_claims() below stringifies via `.value` when issuing
+    # the token, so this produces the same claim either way.
+    permissions = ROLE_PERMISSIONS.get(role_enum, set())
     user_context = UserContext(
         user_id=user_id,
         username=username,

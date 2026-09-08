@@ -175,6 +175,7 @@ class TestGetStatus:
             status = c.get_status(instance_id="ailb-east-1")
         finally:
             c.disconnect()
+        assert status is not None
         assert status.instance_id == "ailb-east-1"
 
     def test_grpc_error_is_caught_and_returns_none(self, monkeypatch, caplog) -> None:
@@ -544,6 +545,7 @@ class TestGetMetrics:
             metrics = c.get_metrics(instance_id="ailb-1")
         finally:
             c.disconnect()
+        assert metrics is not None
         assert metrics.instance_id == "ailb-1"
 
     def test_grpc_error_is_caught_and_returns_none(self, monkeypatch, caplog) -> None:

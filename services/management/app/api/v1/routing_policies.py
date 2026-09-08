@@ -15,6 +15,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
+from penguin_dal.db import DB
 from quart import Blueprint, g, jsonify, request
 
 from shared.auth.rbac import Permission
@@ -79,6 +80,19 @@ def _validate_fields(data: dict[str, Any]) -> str | None:
     return None
 
 
+def _db() -> DB:
+    """Return the process-wide penguin-dal handle, narrowed away from ``None``.
+
+    ``extensions.db`` is declared ``DB | None`` because it starts unset
+    before ``init_db()`` runs at startup; every route below only executes
+    after that point, so this narrows the type for mypy without adding any
+    reachable failure mode.
+    """
+    if db is None:
+        raise RuntimeError("database not initialized")
+    return db
+
+
 def _can_access(user_role: str, user_org_id: int | None, target_org_id: int) -> bool:
     """Admin manages any org's policy; everyone else only their own."""
     return user_role == "admin" or target_org_id == user_org_id
@@ -105,9 +119,13 @@ async def get_policy(organization_id: int) -> tuple:
     if not _can_access(user_role, user_org_id, organization_id):
         return jsonify({"status": "error", "error": "Access denied"}), 403
 
-    row = await asyncio.to_thread(
-        lambda: db(db.routing_policies.organization_id == organization_id).select().first()
-    )
+    def _fetch():
+        database = _db()
+        return (
+            database(database.routing_policies.organization_id == organization_id).select().first()
+        )
+
+    row = await asyncio.to_thread(_fetch)
     if not row:
         from shared.routing.policy import RoutingPolicyConfig
 

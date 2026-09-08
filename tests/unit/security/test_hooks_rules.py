@@ -122,21 +122,27 @@ class TestCombineHookRuleMatches:
         """`ask` outranks `allow` but is outranked by `deny`."""
         allow = _rule(id=1, decision="allow")
         ask = _rule(id=2, decision="ask")
-        assert combine_hook_rule_matches([allow, ask]).decision == "ask"
+        allow_ask_winner = combine_hook_rule_matches([allow, ask])
+        assert allow_ask_winner is not None
+        assert allow_ask_winner.decision == "ask"
 
         deny = _rule(id=3, decision="deny")
-        assert combine_hook_rule_matches([ask, deny]).decision == "deny"
+        ask_deny_winner = combine_hook_rule_matches([ask, deny])
+        assert ask_deny_winner is not None
+        assert ask_deny_winner.decision == "deny"
 
     def test_tie_broken_by_priority_then_id(self) -> None:
         """Equal severity: lowest priority number wins; then lowest id."""
         r1 = _rule(id=5, decision="deny", priority=50)
         r2 = _rule(id=1, decision="deny", priority=10)
         winner = combine_hook_rule_matches([r1, r2])
+        assert winner is not None
         assert winner.id == 1  # lower priority number wins
 
         r3 = _rule(id=9, decision="deny", priority=10)
         r4 = _rule(id=2, decision="deny", priority=10)
         winner2 = combine_hook_rule_matches([r3, r4])
+        assert winner2 is not None
         assert winner2.id == 2  # same priority -> lowest id wins
 
 
@@ -170,4 +176,4 @@ class TestHookRulesResolver:
         assert not any(r.id == 1 for r in rules_b)
         # The store is only ever queried for org B's own scope -- org A's
         # rows are never even fetched on B's behalf.
-        assert ("org", "A") not in [c for c in resolver.store.calls if c[1] == "B"]
+        assert ("org", "A") not in [c for c in store.calls if c[1] == "B"]

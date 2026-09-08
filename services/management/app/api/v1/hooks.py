@@ -66,6 +66,19 @@ def _get_redis() -> Any:
     return getattr(_ext, "redis_client", None)
 
 
+def _db() -> Any:
+    """Return the module-level ``db`` handle, narrowed away from ``None``.
+
+    Reads the global fresh on every call (not cached) so per-module test
+    patches of ``db`` (see ``tests/unit/management/conftest.py``
+    ``ROUTE_MODULES``) still take effect, matching ``_get_content_filter``'s
+    documented closure-over-the-module-symbol behavior above.
+    """
+    if db is None:
+        raise RuntimeError("database not initialized")
+    return db
+
+
 def _get_content_filter() -> ContentFilter:
     """Build a `ContentFilter` against the current db (cheap enough to build per call).
 
@@ -198,7 +211,7 @@ async def _persist_telemetry(
         raw_payload = tool_input if config.capture_raw_payloads else None
 
         def _insert() -> None:
-            db.hook_telemetry_events.insert(
+            _db().hook_telemetry_events.insert(
                 organization_id=org_id,
                 ecosystem=ecosystem,
                 event=event,
@@ -209,7 +222,7 @@ async def _persist_telemetry(
                 occurred_at=_parse_occurred_at(occurred_at_raw),
                 received_at=datetime.utcnow(),
             )
-            db.commit()
+            _db().commit()
 
         await asyncio.to_thread(_insert)
     except Exception as e:

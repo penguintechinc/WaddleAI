@@ -19,6 +19,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
+from penguin_dal.db import DB
 from quart import g, jsonify, request
 
 from shared.auth.rbac import Permission
@@ -40,6 +41,19 @@ logger = logging.getLogger(__name__)
 
 _FLAG_KEY = "waddleai.knowledge_ingest"
 _ALLOWED_EXTENSIONS = (".pdf", ".md", ".markdown", ".txt")
+
+
+def _db() -> DB:
+    """Return the process-wide penguin-dal handle, narrowed away from ``None``.
+
+    ``extensions.db`` is declared ``DB | None`` because it starts unset
+    before ``init_db()`` runs at startup; every route below only executes
+    after that point, so this narrows the type for mypy without adding any
+    reachable failure mode (mirrors the same helper in ``fleet.py``).
+    """
+    if db is None:
+        raise RuntimeError("database not initialized")
+    return db
 
 
 def _knowledge_ingest_enabled(org_id: int) -> bool:
@@ -157,7 +171,8 @@ async def upload_knowledge():
 def _insert_document(
     org_id: int, content: str, provenance: dict[str, Any], vector: list[float]
 ) -> int:
-    doc_id = db.rag_documents.insert(
+    database = _db()
+    doc_id = database.rag_documents.insert(
         organization_id=org_id,
         collection="knowledge",
         content=content,
@@ -169,7 +184,7 @@ def _insert_document(
         provenance=provenance,
         embedding=vector,
     )
-    db.commit()
+    database.commit()
     return doc_id
 
 
@@ -182,9 +197,10 @@ async def list_knowledge():
         return jsonify({"error": "knowledge_ingest feature disabled"}), 404
 
     def _fetch() -> list[Any]:
-        docs = db.rag_documents
+        database = _db()
+        docs = database.rag_documents
         query = (docs.organization_id == org_id) & (docs.collection == "knowledge")
-        return list(db(query).select())
+        return list(database(query).select())
 
     rows = await asyncio.to_thread(_fetch)
     return jsonify({"documents": [_serialize(r) for r in rows]}), 200
@@ -199,8 +215,11 @@ async def get_knowledge(doc_id: int):
         return jsonify({"error": "knowledge_ingest feature disabled"}), 404
 
     def _fetch() -> Any:
-        query = (db.rag_documents.id == doc_id) & (db.rag_documents.organization_id == org_id)
-        return db(query).select().first()
+        database = _db()
+        query = (database.rag_documents.id == doc_id) & (
+            database.rag_documents.organization_id == org_id
+        )
+        return database(query).select().first()
 
     row = await asyncio.to_thread(_fetch)
     if row is None:
@@ -218,12 +237,15 @@ async def delete_knowledge(doc_id: int):
         return jsonify({"error": "knowledge_ingest feature disabled"}), 404
 
     def _delete() -> bool:
-        query = (db.rag_documents.id == doc_id) & (db.rag_documents.organization_id == org_id)
-        existing = db(query).select().first()
+        database = _db()
+        query = (database.rag_documents.id == doc_id) & (
+            database.rag_documents.organization_id == org_id
+        )
+        existing = database(query).select().first()
         if existing is None:
             return False
-        db(query).delete()
-        db.commit()
+        database(query).delete()
+        database.commit()
         return True
 
     deleted = await asyncio.to_thread(_delete)

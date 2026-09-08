@@ -17,7 +17,7 @@ from penguin_aaa.authn import (
 )
 from penguin_aaa.authz.rbac import RBACEnforcer
 from penguin_aaa.authz.rbac import Role as AAARole
-from penguin_aaa.crypto.keystore import FileKeyStore, MemoryKeyStore
+from penguin_aaa.crypto.keystore import FileKeyStore, KeyStore, MemoryKeyStore
 
 from shared.auth.rbac import ROLE_PERMISSIONS, AuthenticationError, Role, UserContext
 
@@ -38,6 +38,7 @@ def create_oidc_provider() -> OIDCProvider:
     )
 
     key_file = os.getenv("SIGNING_KEY_FILE")
+    keystore: KeyStore
     if key_file and os.path.exists(key_file):
         keystore = FileKeyStore(path=Path(key_file))
     else:

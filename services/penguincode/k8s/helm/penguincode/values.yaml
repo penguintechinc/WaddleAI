@@ -57,9 +57,9 @@ server:
 
     # Model configuration
     PENGUINCODE_MODEL_PLANNING: "deepseek-coder:6.7b"
-    PENGUINCODE_MODEL_ORCHESTRATION: "gemma4:e4b"
+    PENGUINCODE_MODEL_ORCHESTRATION: "gemma4:12b"
     PENGUINCODE_MODEL_EXECUTION: "qwen2.5-coder:7b"
-    PENGUINCODE_MODEL_EXPLORATION: "gemma4:e4b"
+    PENGUINCODE_MODEL_EXPLORATION: "gemma4:12b"
     PENGUINCODE_MODEL_RESEARCH: "gemma4:e4b"
 
     # Memory configuration

@@ -14,6 +14,7 @@ rest of this branch's test conventions (see tests/unit/cache/conftest.py).
 
 import math
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -32,6 +33,9 @@ from shared.cache.exact import ExactCache
 from shared.cache.response_cache import RESPONSE_CACHE_FLAG, ResponseCache
 from shared.cache.semantic import SemanticCache
 from shared.cache.upstream import AnthropicPromptCacheOrchestrator
+from shared.security.content_filter import ContentFilter
+from shared.utils.llm_connectors import LLMConnector
+from shared.utils.request_router import LLMRequestRouter
 from tests.unit.cache.conftest import FakeValkey, StubEmbedder
 
 pytestmark = pytest.mark.asyncio
@@ -245,8 +249,14 @@ def _build_pipeline(
     response_cache: ResponseCache, connector: _ControllableConnector, block_output_fn=None
 ):
     """Assemble a real ProxyPipeline (security_in -> cache -> dispatch -> security_out -> meter)."""
+    # cast(): _NoOpContentFilter/_FakeRouter/_ControllableConnector are
+    # duck-typed test doubles for ContentFilter/LLMRequestRouter/LLMConnector
+    # that intentionally avoid the real classes' heavier setup; cast() only
+    # narrows the static type for DispatchStage/SecurityOutStage's
+    # constructors, no runtime check or behavior change.
     security_out = SecurityOutStage(
-        name="security_out", content_filter=_NoOpContentFilter(block_output_fn)
+        name="security_out",
+        content_filter=cast(ContentFilter, _NoOpContentFilter(block_output_fn)),
     )
     metering_buffer = MagicMock()
     token_limiter = AsyncMock()
@@ -254,7 +264,9 @@ def _build_pipeline(
         _PassThroughSecurityInStage(),
         CacheStage(name="cache", response_cache=response_cache),
         DispatchStage(
-            name="dispatch", router=_FakeRouter(connector), connectors={"stub": connector}
+            name="dispatch",
+            router=cast(LLMRequestRouter, _FakeRouter(connector)),
+            connectors={"stub": cast(LLMConnector, connector)},
         ),
         security_out,
         MeterStage(name="meter", metering_buffer=metering_buffer, token_limiter=token_limiter),
@@ -268,7 +280,11 @@ def _build_pipeline(
             return flag_key == RESPONSE_CACHE_FLAG
 
     pipeline = ProxyPipeline(stages=stages, features=_AlwaysOnFeatures())
-    pipeline.metering_buffer = metering_buffer
+    # setattr, not `pipeline.metering_buffer = ...`: ProxyPipeline doesn't
+    # declare this attribute (it belongs to MeterStage); tests stash it here
+    # for convenience. setattr's string-keyed signature isn't statically
+    # checked against ProxyPipeline's declared attributes.
+    setattr(pipeline, "metering_buffer", metering_buffer)  # noqa: B010
     return pipeline
 
 

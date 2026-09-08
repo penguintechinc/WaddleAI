@@ -1,6 +1,7 @@
 """Tests for shared.fleet.placement -- affinity, hot-pin, lazy pull, origin deny-list."""
 
 from dataclasses import dataclass
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -8,11 +9,12 @@ import pytest
 from shared.fleet.base import (
     BackendType,
     Endpoint,
+    InferenceFleetBackend,
     ManagementScope,
     ModelPlacement,
     NodeInfo,
 )
-from shared.fleet.caps import CapExceededError, InsufficientCapacityError
+from shared.fleet.caps import CapEnforcer, CapExceededError, InsufficientCapacityError
 from shared.fleet.placement import ModelRegistryEntry, PlacementEngine, is_denied_origin
 from shared.routing.capability import ModelOffer
 from tests.conformance._fake_dal import FakeDAL
@@ -78,6 +80,19 @@ class _FakeBackend:
         self.place_model = AsyncMock(
             return_value=ModelPlacement(model="m1", node_id="n1", status="placed")
         )
+
+
+def _backend(fake: _FakeBackend) -> InferenceFleetBackend:
+    """Cast a `_FakeBackend` test double to the interface it stands in for.
+
+    `_FakeBackend` deliberately implements only the subset of
+    `InferenceFleetBackend`'s abstract methods these tests exercise (as
+    per-instance AsyncMocks, so call assertions/return values stay
+    configurable) rather than being a full concrete subclass, so it is not
+    a nominal subtype -- this is a type-only cast at the call boundary, not
+    a runtime behavior change.
+    """
+    return cast(InferenceFleetBackend, fake)
 
 
 class TestSelectEndpointAffinity:
@@ -167,7 +182,7 @@ class TestEnsurePlaced:
         # First aggregation call (pre-pull): empty. Second (post-pull): populated.
         backend.endpoints_for = AsyncMock(side_effect=[[], [_endpoint("n1")]])
 
-        result = await engine.ensure_placed("cold-model", [backend])
+        result = await engine.ensure_placed("cold-model", [_backend(backend)])
 
         backend.place_model.assert_awaited_once_with("cold-model", {"lazy": True})
         assert len(result) == 1
@@ -179,7 +194,7 @@ class TestEnsurePlaced:
         backend = _FakeBackend()
         backend.endpoints_for = AsyncMock(return_value=[_endpoint("n1")])
 
-        result = await engine.ensure_placed("warm-model", [backend])
+        result = await engine.ensure_placed("warm-model", [_backend(backend)])
 
         backend.place_model.assert_not_awaited()
         assert len(result) == 1
@@ -191,7 +206,7 @@ class TestEnsurePlaced:
         backend.management_scope = ManagementScope.REGISTER_AND_ROUTE
         backend.endpoints_for = AsyncMock(return_value=[])
 
-        result = await engine.ensure_placed("cold-model", [backend])
+        result = await engine.ensure_placed("cold-model", [_backend(backend)])
 
         backend.place_model.assert_not_awaited()
         assert result == []
@@ -224,7 +239,7 @@ class TestOriginDenyList:
         )
 
         result = await engine.place_model(
-            _ORG_ID, "glm-4", {}, backend, registry_entry=registry_entry
+            _ORG_ID, "glm-4", {}, _backend(backend), registry_entry=registry_entry
         )
 
         assert result.status == "denied"
@@ -242,7 +257,7 @@ class TestOriginDenyList:
         )
 
         result = await engine.place_model(
-            _ORG_ID, "gemma4:e2b", {}, backend, registry_entry=registry_entry
+            _ORG_ID, "gemma4:e2b", {}, _backend(backend), registry_entry=registry_entry
         )
 
         assert result.status == "placed"
@@ -256,28 +271,30 @@ class TestPlaceModelCapsAndCapacity:
         """A CapExceededError from the cap enforcer propagates, backend never called."""
         engine = _engine(tier="community")
         stub = _StubEnforcer(raise_on_model_cap=True)
-        engine._cap_enforcer = lambda org_id: stub  # type: ignore[method-assign]
+        engine._cap_enforcer = lambda org_id: cast(CapEnforcer, stub)  # type: ignore[method-assign]
         backend = _FakeBackend()
         registry_entry = ModelRegistryEntry(
             name="m4", origin="Google", is_utility=False, min_vram=None
         )
 
         with pytest.raises(CapExceededError):
-            await engine.place_model(_ORG_ID, "m4", {}, backend, registry_entry=registry_entry)
+            await engine.place_model(
+                _ORG_ID, "m4", {}, _backend(backend), registry_entry=registry_entry
+            )
         backend.place_model.assert_not_awaited()
 
     async def test_utility_model_skips_cap_check(self) -> None:
         """A utility model's placement never even calls the cap enforcer."""
         engine = _engine(tier="community")
         stub = _StubEnforcer(raise_on_model_cap=True)
-        engine._cap_enforcer = lambda org_id: stub  # type: ignore[method-assign]
+        engine._cap_enforcer = lambda org_id: cast(CapEnforcer, stub)  # type: ignore[method-assign]
         backend = _FakeBackend()
         registry_entry = ModelRegistryEntry(
             name="routing-classifier", origin="Google", is_utility=True, min_vram=None
         )
 
         result = await engine.place_model(
-            _ORG_ID, "routing-classifier", {}, backend, registry_entry=registry_entry
+            _ORG_ID, "routing-classifier", {}, _backend(backend), registry_entry=registry_entry
         )
         assert result.status == "placed"
         assert stub.enforce_model_cap_calls == 0
@@ -295,7 +312,7 @@ class TestPlaceModelCapsAndCapacity:
 
         with pytest.raises(InsufficientCapacityError):
             await engine.place_model(
-                _ORG_ID, "big-model", {}, backend, registry_entry=registry_entry
+                _ORG_ID, "big-model", {}, _backend(backend), registry_entry=registry_entry
             )
         backend.place_model.assert_not_awaited()
 
@@ -310,7 +327,9 @@ class TestPlaceModelCapsAndCapacity:
             name="big-model", origin="Google", is_utility=False, min_vram=8
         )
 
-        await engine.place_model(_ORG_ID, "big-model", {}, backend, registry_entry=registry_entry)
+        await engine.place_model(
+            _ORG_ID, "big-model", {}, _backend(backend), registry_entry=registry_entry
+        )
 
         backend.place_model.assert_awaited_once_with("big-model", {"node_id": "n1"})
 
@@ -326,7 +345,7 @@ class TestPlaceModelCapsAndCapacity:
             _ORG_ID,
             "big-model",
             {"node_id": "explicit-node"},
-            backend,
+            _backend(backend),
             registry_entry=registry_entry,
         )
 
@@ -339,7 +358,7 @@ class TestPlaceModelCapsAndCapacity:
         backend = _FakeBackend()
 
         result = await engine.place_model(
-            _ORG_ID, "unregistered-model", {}, backend, registry_entry=None
+            _ORG_ID, "unregistered-model", {}, _backend(backend), registry_entry=None
         )
 
         assert result.status == "placed"
@@ -377,7 +396,9 @@ class TestPlaceModelRealCapEnforcerIntegration:
         )
 
         with pytest.raises(CapExceededError, match="3 registered models"):
-            await engine.place_model(_ORG_ID, "m4", {}, backend, registry_entry=registry_entry)
+            await engine.place_model(
+                _ORG_ID, "m4", {}, _backend(backend), registry_entry=registry_entry
+            )
         backend.place_model.assert_not_awaited()
 
     async def test_under_cap_dispatches_via_real_enforcer(self, monkeypatch) -> None:
@@ -394,7 +415,9 @@ class TestPlaceModelRealCapEnforcerIntegration:
             name="m1", origin="Google", is_utility=False, min_vram=None
         )
 
-        result = await engine.place_model(_ORG_ID, "m1", {}, backend, registry_entry=registry_entry)
+        result = await engine.place_model(
+            _ORG_ID, "m1", {}, _backend(backend), registry_entry=registry_entry
+        )
         assert result.status == "placed"
 
 
@@ -423,7 +446,7 @@ class TestAnnotateOffers:
         backend.endpoints_for = AsyncMock(return_value=[])
         offers = [ModelOffer(model_name="cold-local", location="local", available=True)]
 
-        annotated = await engine.annotate_offers(offers, [backend])
+        annotated = await engine.annotate_offers(offers, [_backend(backend)])
 
         assert annotated[0].available is False
 
@@ -434,7 +457,7 @@ class TestAnnotateOffers:
         backend.endpoints_for = AsyncMock(return_value=[_endpoint("n1", healthy=True)])
         offers = [ModelOffer(model_name="warm-local", location="local", available=True)]
 
-        annotated = await engine.annotate_offers(offers, [backend])
+        annotated = await engine.annotate_offers(offers, [_backend(backend)])
 
         assert annotated[0].available is True
 
@@ -459,7 +482,7 @@ class TestEndpointsForAggregation:
         backend_b = _FakeBackend(fleet_backend_id=2)
         backend_b.endpoints_for = AsyncMock(return_value=[_endpoint("b1")])
 
-        endpoints = await engine.endpoints_for("m1", [backend_a, backend_b])
+        endpoints = await engine.endpoints_for("m1", [_backend(backend_a), _backend(backend_b)])
 
         assert {e.node_id for e in endpoints} == {"a1", "b1"}
 
@@ -471,6 +494,6 @@ class TestEndpointsForAggregation:
         backend_b = _FakeBackend(fleet_backend_id=2)
         backend_b.endpoints_for = AsyncMock(return_value=[_endpoint("b1")])
 
-        endpoints = await engine.endpoints_for("m1", [backend_a, backend_b])
+        endpoints = await engine.endpoints_for("m1", [_backend(backend_a), _backend(backend_b)])
 
         assert [e.node_id for e in endpoints] == ["b1"]

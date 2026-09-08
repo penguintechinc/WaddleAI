@@ -935,7 +935,16 @@ class DispatchStage(Stage):
                 # Streaming: accumulate chunks
                 ctx.response_text = ""
                 usage: dict[str, Any] | None = None
-                async for chunk in connector.stream_chat_completion(
+                # NOTE: shared.utils.llm_connectors.LLMConnector intentionally
+                # declares stream_chat_completion as a plain (non-async)
+                # abstractmethod because every concrete connector implements it as
+                # an async-generator function; calling it returns the AsyncIterator
+                # directly (see that class's docstring). mypy's override checker
+                # doesn't special-case this, so it reports the abstract
+                # declaration's static type as a Coroutine here. No `await`
+                # belongs on this call -- adding one would break at runtime
+                # (async generators aren't awaitable).
+                async for chunk in connector.stream_chat_completion(  # type: ignore[attr-defined]
                     ctx.messages, model=target_model
                 ):
                     ctx.response_text += chunk.delta

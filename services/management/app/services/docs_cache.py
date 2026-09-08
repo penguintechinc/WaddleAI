@@ -26,6 +26,7 @@ import time
 import urllib.robotparser
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any, Protocol
 
 import httpx
 from markdownify import markdownify
@@ -34,6 +35,22 @@ from shared.knowledge.embed import embed_cached
 from shared.utils.rag_integration import chunk_text
 
 logger = logging.getLogger(__name__)
+
+
+class _DocsCacheDB(Protocol):
+    """Structural seam for the PyDAL-shaped db object DocsCache needs.
+
+    A Protocol rather than the concrete penguin-dal ``DB`` so unit tests can
+    keep injecting a lightweight fake with no real database connection --
+    see ``tests/unit/management/test_docs_cache.py::_FakeDB``.
+    """
+
+    docs_sources: Any
+    docs_cache_pages: Any
+
+    def __call__(self, query: Any) -> Any: ...
+    def commit(self) -> None: ...
+
 
 _FLAG_KEY = "waddleai.docs_cache"
 _TTL_VERSIONED_SECONDS = 30 * 24 * 3600
@@ -122,7 +139,7 @@ class _RateLimiter:
 class DocsCache:
     """Fetch-on-demand documentation cache with license/robots/rate-limit gating."""
 
-    def __init__(self, db: object, http_client: httpx.AsyncClient | None = None) -> None:
+    def __init__(self, db: _DocsCacheDB, http_client: httpx.AsyncClient | None = None) -> None:
         """Bind to a penguin-dal handle and an optional shared httpx client (tests inject one)."""
         self.db = db
         self._client = http_client
@@ -293,7 +310,7 @@ class DocsCache:
         self.db.commit()
 
 
-def create_docs_cache(db: object, http_client: httpx.AsyncClient | None = None) -> DocsCache:
+def create_docs_cache(db: _DocsCacheDB, http_client: httpx.AsyncClient | None = None) -> DocsCache:
     """Factory function, matching this service package's ``create_*`` convention."""
     return DocsCache(db, http_client=http_client)
 

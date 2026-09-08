@@ -73,7 +73,14 @@ class TestSharedProcessPool:
                 captured["func"] = func
                 return real_run_in_executor(executor, func, *args)
 
-            loop.run_in_executor = _spy  # instance-level patch, no ABC-vs-concrete-class guessing
+            # Instance-level patch (no ABC-vs-concrete-class guessing) to spy
+            # on which executor `_run_ner_patterns` submits to. mypy can't
+            # type-check assigning over a bound method soundly -- that's
+            # exactly what [method-assign] exists to flag -- and asyncio's
+            # `run_in_executor` stub is generic in a way a plain spy
+            # function can never match; both are inherent to this pattern,
+            # not a real type error.
+            loop.run_in_executor = _spy  # type: ignore[method-assign,assignment]
             loop.run_until_complete(cf._run_ner_patterns("hello", "input", org_id=None))
         finally:
             loop.close()

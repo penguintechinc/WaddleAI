@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -39,6 +40,15 @@ class _Row:
 
     def __init__(self, **fields: object) -> None:
         self.__dict__.update(fields)
+
+    def __getattr__(self, name: str) -> Any:
+        """Preserve the real-Row-like AttributeError for genuinely unset fields.
+
+        Declaring this (instead of relying on the implicit default) also tells
+        mypy that attribute access on a dynamically-populated _Row is Any,
+        matching how the untyped penguin-dal Row actually behaves.
+        """
+        raise AttributeError(name)
 
 
 class _Rows(list):
@@ -74,7 +84,11 @@ class _Field:
         return _Predicate(self.table, lambda row: getattr(row, self.name, None) == other)
 
     def __ge__(self, other: object) -> _Predicate:
-        return _Predicate(self.table, lambda row: getattr(row, self.name, None) >= other)
+        def _ge(row: _Row) -> bool:
+            value = getattr(row, self.name, None)
+            return value is not None and value >= other
+
+        return _Predicate(self.table, _ge)
 
 
 class _QuerySet:
@@ -108,7 +122,8 @@ class _Table:
         return _Field(self, field_name)
 
     def insert(self, **kwargs: object) -> int:
-        row_id = kwargs.pop("id", self._next_id)
+        row_id_value = kwargs.pop("id", self._next_id)
+        row_id = row_id_value if isinstance(row_id_value, int) else self._next_id
         row = _Row(id=row_id, **kwargs)
         self.rows.append(row)
         self._next_id = max(self._next_id, row_id) + 1

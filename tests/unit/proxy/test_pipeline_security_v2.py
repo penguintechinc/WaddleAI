@@ -99,7 +99,9 @@ class _AlwaysFeaturesOff:
 
 def _ctx(**overrides: Any) -> PipelineContext:
     user = Mock(id=1, tenant_id="org1", user_id=1, organization_id="org1")
-    base = dict(user=user, body={}, model="gpt-4", messages=[{"role": "user", "content": "hi"}])
+    base: dict[str, Any] = dict(
+        user=user, body={}, model="gpt-4", messages=[{"role": "user", "content": "hi"}]
+    )
     base.update(overrides)
     return PipelineContext(**base)
 

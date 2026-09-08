@@ -200,6 +200,19 @@ class HooksPolicyEngine:
                 rule_id=None,
                 tier="default",
             )
+        if self.security_policy_engine is None:
+            # Mirrors the resolver check above: the only caller already
+            # requires `security_policy_engine is not None` before invoking
+            # this method (see the Tier 2 dispatch above), so this is
+            # unreachable in practice -- narrows the type for mypy without
+            # changing the fail-open behavior established for the sibling
+            # optional dependency.
+            return HookEvaluation(
+                decision="allow",
+                reason="Tier 2 misconfigured (no policy engine)",
+                rule_id=None,
+                tier="default",
+            )
         try:
             resolved = await self.security_policy_resolver.resolve(
                 org_id, model=None, tool_name=tool_name, direction="input"

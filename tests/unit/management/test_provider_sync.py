@@ -11,9 +11,9 @@ made to AILB) can be asserted directly instead of just "no exception".
 from dataclasses import dataclass, field
 from datetime import datetime
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
-from services.management.app.grpc.client import RouteConfig
+from services.management.app.grpc.client import AILBModuleClient, RouteConfig
 from services.management.app.services.provider_sync import (
     ProviderSyncService,
     SyncResult,
@@ -231,6 +231,17 @@ class _FakeAILBClient:
         return True
 
 
+def _client(fake: _FakeAILBClient) -> AILBModuleClient:
+    """Cast the hand-written AILB fake to the real client type at the call boundary.
+
+    No Protocol exists for AILBModuleClient yet, and the fake deliberately
+    implements only the three methods ProviderSyncService actually calls
+    (is_connected/update_routes/delete_route), so a cast -- not a subclass --
+    is the correct fit here.
+    """
+    return cast(AILBModuleClient, fake)
+
+
 # ---------------------------------------------------------------------------
 # Local helpers
 # ---------------------------------------------------------------------------
@@ -297,7 +308,7 @@ class TestSetters:
         """The AILB client reference is swapped in."""
         service = ProviderSyncService(_FakeDB())
         client = _FakeAILBClient()
-        service.set_ailb_client(client)
+        service.set_ailb_client(_client(client))
         assert service.ailb_client is client
 
     def test_set_instance_id(self) -> None:
@@ -306,7 +317,7 @@ class TestSetters:
         _seed_deployment(db)
         _seed_model(db, model_id=1, deployment_id=1)
         client = _FakeAILBClient()
-        service = ProviderSyncService(db, client)
+        service = ProviderSyncService(db, _client(client))
         service.set_instance_id("ailb-west-1")
 
         service.sync_ollama_deployment(1)
@@ -345,7 +356,7 @@ class TestSyncOllamaDeployment:
         _seed_deployment(db, deployment_id=1)
         _seed_model(db, model_id=10, deployment_id=1, model_name="llama3", model_tag="8b")
         client = _FakeAILBClient()
-        service = ProviderSyncService(db, client)
+        service = ProviderSyncService(db, _client(client))
         service.set_instance_id("inst-1")
 
         result = service.sync_ollama_deployment(1)
@@ -380,7 +391,7 @@ class TestSyncOllamaDeployment:
             last_synced=None,
             sync_error="previous failure",
         )
-        service = ProviderSyncService(db, _FakeAILBClient())
+        service = ProviderSyncService(db, _client(_FakeAILBClient()))
 
         result = service.sync_ollama_deployment(1)
 
@@ -397,7 +408,7 @@ class TestSyncOllamaDeployment:
         _seed_deployment(db, deployment_id=1)
         _seed_model(db, model_id=10, deployment_id=1)
         client = _FakeAILBClient(connected=False)
-        service = ProviderSyncService(db, client)
+        service = ProviderSyncService(db, _client(client))
 
         result = service.sync_ollama_deployment(1)
 
@@ -421,7 +432,7 @@ class TestSyncOllamaDeployment:
         _seed_deployment(db, deployment_id=1)
         _seed_model(db, model_id=10, deployment_id=1)
         client = _FakeAILBClient(update_result={"success": False, "message": "quota exceeded"})
-        service = ProviderSyncService(db, client)
+        service = ProviderSyncService(db, _client(client))
 
         result = service.sync_ollama_deployment(1)
 
@@ -437,12 +448,12 @@ class TestSyncOllamaDeployment:
         _seed_deployment(db, deployment_id=1)
         _seed_model(db, model_id=10, deployment_id=1, model_name="badmodel")
         client = _FakeAILBClient(fail_route_prefix="ollama-1")
-        service = ProviderSyncService(db, client)
+        service = ProviderSyncService(db, _client(client))
 
         result = service.sync_ollama_deployment(1)
 
         assert result.success is False
-        assert "AILB unreachable" in result.error
+        assert result.error is not None and "AILB unreachable" in result.error
 
 
 # ---------------------------------------------------------------------------
@@ -522,7 +533,7 @@ class TestSyncAllOllamaDeployments:
         _seed_deployment(db, deployment_id=2, status="pending")
         _seed_model(db, model_id=20, deployment_id=2, model_name="goodmodel")
         client = _FakeAILBClient(fail_route_prefix="ollama-1")
-        service = ProviderSyncService(db, client)
+        service = ProviderSyncService(db, _client(client))
 
         results = service.sync_all_ollama_deployments()
 
@@ -549,7 +560,7 @@ class TestRemoveOllamaModelRoute:
         db = _FakeDB()
         db.seed("ollama_model_routes", model_id=10, ailb_route_id="ollama-1-llama3")
         client = _FakeAILBClient()
-        service = ProviderSyncService(db, client)
+        service = ProviderSyncService(db, _client(client))
         service.set_instance_id("inst-1")
 
         assert service.remove_ollama_model_route(10) is True
@@ -562,7 +573,7 @@ class TestRemoveOllamaModelRoute:
         db = _FakeDB()
         db.seed("ollama_model_routes", model_id=10, ailb_route_id=None)
         client = _FakeAILBClient()
-        service = ProviderSyncService(db, client)
+        service = ProviderSyncService(db, _client(client))
 
         assert service.remove_ollama_model_route(10) is True
         assert client.delete_calls == []
@@ -582,7 +593,7 @@ class TestRemoveOllamaModelRoute:
         db = _FakeDB()
         db.seed("ollama_model_routes", model_id=10, ailb_route_id="ollama-1-llama3")
         client = _FakeAILBClient(raise_on_delete=RuntimeError("ailb down"))
-        service = ProviderSyncService(db, client)
+        service = ProviderSyncService(db, _client(client))
 
         assert service.remove_ollama_model_route(10) is False
         # The local record is untouched since the AILB call raised first.

@@ -9,6 +9,7 @@ with ``status='quarantined'`` and are never returned by ``get``/``list``.
 from __future__ import annotations
 
 import asyncio
+import builtins
 import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -211,7 +212,15 @@ class ScratchpadStore:
             "expires_at": expires_at,
         }
 
-    def _select_active_rows(self, org_id: int, session_id: str, user_id: int) -> list[dict]:
+    def _select_active_rows(
+        self, org_id: int, session_id: str, user_id: int
+    ) -> builtins.list[dict]:
+        # NOTE: qualified as builtins.list -- this class defines an async
+        # method literally named `list` (line ~174); with postponed
+        # evaluation (PEP 563) mypy resolves a bare `list[...]` annotation
+        # appearing after that method against the class's own `list`
+        # attribute instead of the builtin generic, since the class-scope
+        # name is already bound by the time this method is analyzed.
         rows = self.db.executesql(
             "SELECT key, value, updated_at FROM session_scratchpad "
             "WHERE org_id = %s AND session_id = %s AND user_id = %s AND status = 'active' "

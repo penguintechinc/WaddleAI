@@ -114,6 +114,49 @@ class MemoryStore(ABC):
         pass
 
 
+def _normalize_mem0_results(response: Any, source: str) -> list[dict[str, Any]]:
+    """Normalise a mem0ai client response into a plain list of memory dicts.
+
+    Calibrated against mem0ai 2.0.18's hosted ``MemoryClient``: both
+    ``search()`` and ``get_all()`` return a paginated envelope
+    (``{"count": ..., "next": ..., "previous": ..., "results": [...]}``)
+    rather than a bare list, per ``mem0/client/main.py``. Older/OSS mem0
+    clients have returned a bare list directly, so both shapes are accepted
+    here defensively -- the pinned version does not guarantee a future mem0
+    bump won't change shape again, and this library ships no ``py.typed``
+    marker so mypy cannot catch a mismatch on its own.
+
+    Args:
+        response: The raw return value of ``client.search()`` or
+            ``client.get_all()``.
+        source: Caller label (e.g. "search", "get_all") used in the warning
+            logged on an unrecognised shape.
+
+    Returns:
+        The extracted ``list[dict[str, Any]]``, or ``[]`` with a logged
+        warning if the shape is neither a bare list nor an envelope dict
+        with a "results" list.
+    """
+    if isinstance(response, list):
+        return response
+    if isinstance(response, dict):
+        results = response.get("results")
+        if isinstance(results, list):
+            return results
+        logger.warning(
+            "mem0 %s response dict missing a 'results' list; got keys=%s",
+            source,
+            list(response.keys()),
+        )
+        return []
+    logger.warning(
+        "mem0 %s returned unexpected type %s; expected list or dict envelope",
+        source,
+        type(response).__name__,
+    )
+    return []
+
+
 class Mem0MemoryStore(MemoryStore):
     """mem0-based memory storage."""
 
@@ -257,10 +300,14 @@ class Mem0MemoryStore(MemoryStore):
 
             memories: list[MemoryEntry] = []
             if scope in ("user", "all"):
-                personal = client.search(query, user_id=str(user_id), limit=limit)
+                personal = _normalize_mem0_results(
+                    client.search(query, user_id=str(user_id), limit=limit), "search"
+                )
                 memories.extend(_convert(personal, personal_bucket=True))
             if scope in ("org", "all"):
-                org = client.search(query, user_id=f"org-{organization_id}", limit=limit)
+                org = _normalize_mem0_results(
+                    client.search(query, user_id=f"org-{organization_id}", limit=limit), "search"
+                )
                 memories.extend(_convert(org, personal_bucket=False))
 
             memories.sort(key=lambda m: m.relevance_score, reverse=True)
@@ -283,7 +330,7 @@ class Mem0MemoryStore(MemoryStore):
             client = await self._ensure_client()
 
             # mem0 get_all for user
-            results = client.get_all(user_id=str(user_id))
+            results = _normalize_mem0_results(client.get_all(user_id=str(user_id)), "get_all")
 
             # Filter and convert
             cutoff = datetime.utcnow() - timedelta(hours=hours)

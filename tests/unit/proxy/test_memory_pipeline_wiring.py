@@ -65,7 +65,7 @@ class TogglableFeatures:
         self.enabled = enabled
         self.raises = raises
 
-    def is_feature_enabled(self, flag_key: str, distinct_id: str = None) -> bool:
+    def is_feature_enabled(self, flag_key: str, distinct_id: str | None = None) -> bool:
         """Return the configured value, or raise if constructed with raises=True."""
         if self.raises:
             raise RuntimeError("feature flag backend unavailable")

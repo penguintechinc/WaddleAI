@@ -40,7 +40,7 @@ class SyncResult:
     status: SyncStatus = SyncStatus.PENDING
     message: str = ""
     error: str | None = None
-    timestamp: datetime = None
+    timestamp: datetime | None = None
 
     def __post_init__(self):
         """Default timestamp to now if the caller did not supply one."""

@@ -47,7 +47,13 @@ if [ -z "$SUMMARY_LINE" ]; then
   exit 1
 fi
 
-CHECKED_COUNT="$(printf '%s\n' "$SUMMARY_LINE" | grep -oE 'checked [0-9]+ source file' | grep -oE '[0-9]+' || true)"
+# Two summary shapes carry the file count, and the gate must accept BOTH:
+#   "Found 12 errors in 5 files (checked 451 source files)"   -- errors present
+#   "Success: no issues found in 451 source files"            -- fully clean
+# Matching only the first meant a completely clean tree parsed as zero files
+# examined and failed the denominator check below -- the anti-fake-pass guard
+# blocking a genuine pass. Match the number preceding "source file" in either.
+CHECKED_COUNT="$(printf '%s\n' "$SUMMARY_LINE" | grep -oE '[0-9]+ source file' | grep -oE '[0-9]+' || true)"
 
 if [ -z "$CHECKED_COUNT" ] || [ "$CHECKED_COUNT" -eq 0 ]; then
   echo "mypy-gate: FAIL -- mypy examined zero source files (module-path error or a broken lint-path/exclude config)" >&2

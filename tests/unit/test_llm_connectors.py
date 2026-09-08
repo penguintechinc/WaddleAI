@@ -3,7 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import anthropic
-import httpx
+import httpx2  # pinned openai==3.3.1/anthropic==1.0.0 build their exceptions on httpx2, not httpx
 import openai
 import pytest
 
@@ -1552,13 +1552,15 @@ class TestStreamingConnectors:
             mock_client = AsyncMock()
             mock_anthropic.return_value = mock_client
 
-            # Create a proper sync context manager with async iteration support
+            # Async context manager + async iteration: anthropic's real
+            # AsyncMessageStreamManager implements only __aenter__/__aexit__,
+            # so a sync-CM mock here would let a `with` regression pass.
             class MockStreamContext:
-                def __enter__(self):
+                async def __aenter__(self):
                     return self
 
-                def __exit__(self, *args):
-                    pass
+                async def __aexit__(self, *args):
+                    return None
 
                 def __aiter__(self):
                     return self
@@ -1831,41 +1833,41 @@ class TestStreamingUsageAccounting:
 
 def _openai_timeout_error() -> openai.APITimeoutError:
     """Build a real openai.APITimeoutError for exercising the connector's typed-error mapping."""
-    request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+    request = httpx2.Request("POST", "https://api.openai.com/v1/chat/completions")
     return openai.APITimeoutError(request)
 
 
 def _openai_rate_limit_error() -> openai.RateLimitError:
     """Build a real openai.RateLimitError (HTTP 429) for typed-error mapping tests."""
-    request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
-    response = httpx.Response(429, request=request)
+    request = httpx2.Request("POST", "https://api.openai.com/v1/chat/completions")
+    response = httpx2.Response(429, request=request)
     return openai.RateLimitError("rate limited", response=response, body=None)
 
 
 def _openai_status_error(status_code: int) -> openai.APIStatusError:
     """Build a real openai.APIStatusError with the given status for typed-error mapping tests."""
-    request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
-    response = httpx.Response(status_code, request=request)
+    request = httpx2.Request("POST", "https://api.openai.com/v1/chat/completions")
+    response = httpx2.Response(status_code, request=request)
     return openai.APIStatusError("status error", response=response, body=None)
 
 
 def _anthropic_timeout_error() -> anthropic.APITimeoutError:
     """Build a real anthropic.APITimeoutError for typed-error mapping tests."""
-    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    request = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
     return anthropic.APITimeoutError(request)
 
 
 def _anthropic_rate_limit_error() -> anthropic.RateLimitError:
     """Build a real anthropic.RateLimitError (HTTP 429) for typed-error mapping tests."""
-    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
-    response = httpx.Response(429, request=request)
+    request = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+    response = httpx2.Response(429, request=request)
     return anthropic.RateLimitError("rate limited", response=response, body=None)
 
 
 def _anthropic_status_error(status_code: int) -> anthropic.APIStatusError:
     """Build a real anthropic.APIStatusError with the given status for typed-error mapping tests."""
-    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
-    response = httpx.Response(status_code, request=request)
+    request = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+    response = httpx2.Response(status_code, request=request)
     return anthropic.APIStatusError("status error", response=response, body=None)
 
 
@@ -2316,11 +2318,11 @@ class TestAnthropicConnectorErrorMapping:
         real_event = Mock(type="content_block_delta", delta=Mock(text="hi"))
 
         class MockStreamContext:
-            def __enter__(self):
+            async def __aenter__(self):
                 return self
 
-            def __exit__(self, *args):
-                pass
+            async def __aexit__(self, *args):
+                return None
 
             def __aiter__(self):
                 self._events = iter([other_event, no_text_event, real_event])
@@ -3740,11 +3742,11 @@ class TestAnthropicConnectorRemainingBranches:
         """A system-role message is extracted and passed separately to messages.stream()."""
 
         class MockStreamContext:
-            def __enter__(self):
+            async def __aenter__(self):
                 return self
 
-            def __exit__(self, *args):
-                pass
+            async def __aexit__(self, *args):
+                return None
 
             def __aiter__(self):
                 self._events = iter([])

@@ -50,7 +50,7 @@ class TestSessionAffinityMap:
         assert result_other_org is None
 
 
-def _router_with_connectors(connectors: dict, stats: dict = None) -> LLMRequestRouter:
+def _router_with_connectors(connectors: dict, stats: dict | None = None) -> LLMRequestRouter:
     """Router with connectors."""
     manager = MagicMock()
     manager.connectors = connectors

@@ -20,6 +20,7 @@ its replacement fail-fast contract.
 """
 
 import json
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
@@ -35,6 +36,7 @@ from shared.utils.memory_integration import (
     PgvectorMemoryStore,
     ReadReplicaPool,
     WaddleAIMemoryManager,
+    _normalize_mem0_results,
     create_memory_manager,
 )
 
@@ -99,7 +101,13 @@ class TestMemoryEntryAndConversationContext:
 
 @dataclass(slots=True)
 class FakeMem0Client:
-    """Records mem0 client calls and returns configurable results/exceptions."""
+    """Records mem0 client calls and returns configurable results/exceptions.
+
+    ``envelope=True`` makes ``search``/``get_all`` return the mem0ai 2.0.18
+    hosted-client paginated shape (``{"count": ..., "results": [...]}``)
+    instead of a bare list, so tests can exercise both response shapes that
+    ``_normalize_mem0_results`` must accept.
+    """
 
     add_calls: list = field(default_factory=list)
     search_results: dict = field(default_factory=dict)
@@ -110,6 +118,7 @@ class FakeMem0Client:
     search_raises: Exception | None = None
     get_all_raises: Exception | None = None
     delete_raises: Exception | None = None
+    envelope: bool = False
 
     def add(self, content: str, user_id: str, metadata: dict) -> None:
         """Record the call args, or raise the configured exception."""
@@ -117,17 +126,27 @@ class FakeMem0Client:
             raise self.add_raises
         self.add_calls.append((content, user_id, metadata))
 
-    def search(self, query: str, user_id: str, limit: int) -> list:
+    def search(self, query: str, user_id: str, limit: int) -> list | dict:
         """Return the queued results for user_id, or raise the configured exception."""
         if self.search_raises:
             raise self.search_raises
         self.search_calls.append((query, user_id, limit))
-        return self.search_results.get(user_id, [])
+        results = self.search_results.get(user_id, [])
+        if self.envelope:
+            return {"count": len(results), "next": None, "previous": None, "results": results}
+        return results
 
-    def get_all(self, user_id: str) -> list:
+    def get_all(self, user_id: str) -> list | dict:
         """Return the queued get_all result, or raise the configured exception."""
         if self.get_all_raises:
             raise self.get_all_raises
+        if self.envelope:
+            return {
+                "count": len(self.get_all_result),
+                "next": None,
+                "previous": None,
+                "results": self.get_all_result,
+            }
         return self.get_all_result
 
     def delete(self, memory_id: str) -> None:
@@ -176,6 +195,48 @@ def _mem0_result(
             "user_id": user_id,
         },
     }
+
+
+class TestNormalizeMem0Results:
+    """_normalize_mem0_results: the shape-unwrapping helper in isolation.
+
+    This is the regression coverage for the actual bug: mem0ai 2.0.18's
+    hosted MemoryClient.search()/get_all() return a paginated envelope dict
+    (`{"results": [...]}`), not a bare list, and the library ships no
+    py.typed marker so mypy can't catch a mismatch on its own.
+    """
+
+    def test_envelope_dict_returns_results_list(self):
+        """The {"results": [...]} envelope shape unwraps to its results list."""
+        payload = [{"id": "m1"}, {"id": "m2"}]
+        response = {"count": 2, "next": None, "previous": None, "results": payload}
+        assert _normalize_mem0_results(response, "search") == payload
+
+    def test_bare_list_is_returned_unchanged(self):
+        """Back-compat: an older/OSS mem0 client returning a bare list passes through."""
+        payload = [{"id": "m1"}]
+        assert _normalize_mem0_results(payload, "search") == payload
+
+    def test_empty_envelope_returns_empty_list(self):
+        """An envelope with an empty results list yields []."""
+        response = {"count": 0, "next": None, "previous": None, "results": []}
+        assert _normalize_mem0_results(response, "get_all") == []
+
+    def test_envelope_missing_results_key_warns_and_returns_empty(self, caplog):
+        """A dict response with no 'results' key logs a warning and returns []."""
+        with caplog.at_level(logging.WARNING):
+            result = _normalize_mem0_results({"count": 0}, "search")
+        assert result == []
+        assert "search" in caplog.text
+        assert "results" in caplog.text
+
+    def test_unexpected_type_warns_and_returns_empty(self, caplog):
+        """A wholly unexpected response type (e.g. None, str, int) warns and returns []."""
+        with caplog.at_level(logging.WARNING):
+            result = _normalize_mem0_results(None, "get_all")
+        assert result == []
+        assert "get_all" in caplog.text
+        assert "unexpected type" in caplog.text
 
 
 class TestMem0MemoryStoreInit:
@@ -313,6 +374,38 @@ class TestMem0MemoryStoreSearchMemories:
         assert [m.id for m in results] == ["o1"]
         assert client.search_calls == [("q", "org-3", 10)]
 
+    async def test_envelope_response_shape_is_unwrapped(self):
+        """Regression: mem0ai 2.0.18's client.search() returns a paginated envelope dict.
+
+        Not a bare list -- search_memories must unwrap 'results' rather than
+        silently finding nothing.
+        """
+        client = FakeMem0Client(
+            envelope=True,
+            search_results={"5": [_mem0_result("m1", "right org+session", 0.9, organization_id=3)]},
+        )
+        store = _mem0_store(client)
+        results = await store.search_memories("q", user_id=5, organization_id=3, scope="user")
+        assert [m.id for m in results] == ["m1"]
+
+    async def test_envelope_response_shape_is_unwrapped_for_the_org_bucket(self):
+        """Regression: the ORG-bucket search must unwrap the envelope too.
+
+        Covers the second `client.search` call site separately from the
+        personal one above -- a normalisation applied to only one of the two
+        leaves org-scoped memory silently empty, and the scope='user' test
+        above cannot see that.
+        """
+        client = FakeMem0Client(
+            envelope=True,
+            search_results={
+                "org-3": [_mem0_result("o1", "team note", 0.9, organization_id=3, scope="org")]
+            },
+        )
+        store = _mem0_store(client)
+        results = await store.search_memories("q", user_id=5, organization_id=3, scope="org")
+        assert [m.id for m in results] == ["o1"]
+
 
 class TestMem0MemoryStoreGetRecentMemories:
     """get_recent_memories: time-window/org/session filtering, limit, and error handling."""
@@ -394,6 +487,33 @@ class TestMem0MemoryStoreGetRecentMemories:
         store = _mem0_store(client)
         results = await store.get_recent_memories(user_id=5, organization_id=3)
         assert results == []
+
+    async def test_envelope_response_shape_is_unwrapped(self):
+        """Regression: mem0ai 2.0.18's client.get_all() returns a paginated envelope dict.
+
+        Not a bare list -- get_recent_memories must unwrap 'results' rather
+        than silently finding nothing.
+        """
+        now = datetime.utcnow()
+        client = FakeMem0Client(
+            envelope=True,
+            get_all_result=[
+                {
+                    "metadata": {
+                        "organization_id": 3,
+                        "session_id": "s1",
+                        "created_at": now.isoformat(),
+                        "memory_id": "m1",
+                    },
+                    "memory": "recent right",
+                }
+            ],
+        )
+        store = _mem0_store(client)
+        results = await store.get_recent_memories(
+            user_id=5, organization_id=3, session_id="s1", hours=24, limit=10
+        )
+        assert [m.content for m in results] == ["recent right"]
 
 
 class TestMem0MemoryStoreDeleteAndCleanup:

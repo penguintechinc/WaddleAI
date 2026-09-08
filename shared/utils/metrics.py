@@ -34,6 +34,11 @@ class WaddleAIMetrics:
     def __init__(self, service_name: str):
         """Bind this instance to `service_name`, reusing shared collectors after the first build."""
         self.service_name = service_name
+        # Declared upfront (no value yet): the setattr loop below assigns it
+        # dynamically from `_shared_collectors` on reuse, which mypy can't
+        # follow -- this is the same `Info` instance built on first
+        # construction at the bottom of this method.
+        self.info: Info
 
         if WaddleAIMetrics._shared_collectors is not None:
             for name, collector in WaddleAIMetrics._shared_collectors.items():
@@ -349,7 +354,12 @@ class MetricsMiddleware:
     def __call__(self, request, response, start_time: float):
         """Record request metrics."""
         duration = time.time() - start_time
-        endpoint = getattr(request, "url", {}).path if hasattr(request, "url") else "unknown"
+        # The `hasattr` guard makes `getattr`'s dict default unreachable
+        # dead code (it only ever fires when `.url` is confirmed present),
+        # but that dict default is what confuses mypy into unioning a
+        # dict[Any, Any] with no `.path` into the expression's type -- drop
+        # it and rely on the guard directly instead.
+        endpoint = request.url.path if hasattr(request, "url") else "unknown"
         method = getattr(request, "method", "unknown")
         status_code = getattr(response, "status_code", 0)
 

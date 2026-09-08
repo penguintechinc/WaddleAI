@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import datetime
+from typing import Any
 
 import yaml
 from quart import Response, current_app, jsonify, request
@@ -603,7 +604,7 @@ def generate_docker_compose_config(name: str, gpu_config: dict, resource_limits:
     gpu_count = gpu_config.get("count", 0)
     port = 11434  # Default Ollama port
 
-    config = {
+    config: dict[str, Any] = {
         "version": "3.8",
         "services": {
             f"ollama-{name}": {
@@ -641,7 +642,7 @@ def generate_k8s_manifest(name: str, gpu_config: dict, resource_limits: dict) ->
     """Generate Kubernetes manifests for Ollama."""
     gpu_count = gpu_config.get("count", 0)
 
-    deployment = {
+    deployment: dict[str, Any] = {
         "apiVersion": "apps/v1",
         "kind": "Deployment",
         "metadata": {"name": f"ollama-{name}", "namespace": "waddleai"},

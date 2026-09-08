@@ -8,6 +8,7 @@ new caches are actually consulted.
 """
 
 from datetime import datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -15,8 +16,8 @@ import pytest
 from shared.utils.memory_integration import MemoryEntry, PgvectorMemoryStore
 
 
-def _entry(**overrides) -> MemoryEntry:
-    base = dict(
+def _entry(**overrides: Any) -> MemoryEntry:
+    base: dict[str, Any] = dict(
         id="1",
         user_id=10,
         organization_id=1,

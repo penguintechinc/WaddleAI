@@ -81,6 +81,7 @@ def test_write_aggregated_row_updates_existing_row_in_place(tmp_path: Path) -> N
     rows = db(db.token_usage.virtual_key_id == 1).select()
     assert len(rows) == 1  # accumulated onto one row, not a second insert
     row = rows.first()
+    assert row is not None
     assert row.tokens_input_total == 17  # 10 + 7 -- stuck at 10 if the update silently no-opped
     assert row.tokens_output_total == 8
     assert row.request_count == 3
@@ -97,6 +98,7 @@ def test_write_aggregated_row_merges_llm_breakdown_across_flushes(tmp_path: Path
     writer.write_aggregated_row(_agg(total_input_tokens=7, total_output_tokens=3))
 
     row = db(db.token_usage.virtual_key_id == 1).select().first()
+    assert row is not None
     breakdown = json.loads(row.llm_tokens)
     assert breakdown["openai_gpt_4"]["input"] == 17
     assert breakdown["openai_gpt_4"]["output"] == 8

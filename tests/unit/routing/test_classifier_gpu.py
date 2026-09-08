@@ -14,6 +14,7 @@ Requires WADDLEAI_GPU_TESTS=1 and a reachable Ollama endpoint (OLLAMA_HOST).
 
 import json
 import os
+from types import SimpleNamespace
 
 import pytest
 
@@ -34,25 +35,40 @@ pytestmark = [pytest.mark.gpu, pytest.mark.skipif(not GPU_TESTS_ENABLED, reason=
 _CLASSIFIER_MODEL = os.getenv("WADDLEAI_GPU_CLASSIFIER_MODEL", "gemma4:e4b")
 
 
-class _RecordingOllamaClassifierClient:
-    """ClassifierClient over the real Ollama connector that keeps each raw reply.
+class _RecordingClassifierClient:
+    """The PRODUCTION classifier client, wrapped to keep each raw reply.
 
-    The raw text is what lets a test tell a genuine classification from
+    Deliberately wraps ``LLMConnectorClassifierClient`` rather than calling the
+    Ollama connector directly: that class supplies the baked-in JSON-shape
+    system prompt (``_DEFAULT_SYSTEM_PROMPT``) used whenever an org has not
+    configured ``routing_policies.classifier_prompt``. A test that built its own
+    connector would send the bare user prompt, get prose back, and blame the
+    model for what is really a missing instruction.
+
+    The recorded raw text is what lets a test tell a genuine classification from
     ``classify()``'s silent safe-default fallback.
     """
 
     def __init__(self) -> None:
+        from shared.routing.classifier_connector import LLMConnectorClassifierClient
         from shared.utils.llm_connectors import OllamaConnector
 
-        self._connector = OllamaConnector(name="ollama", config={"base_url": ollama_base_url()})
+        # `endpoint_url`, not `base_url`: LLMConnector.__init__ reads
+        # config["endpoint_url"], and a wrong key leaves it None so every request
+        # goes to the literal URL "None/api/chat". An earlier version of this test
+        # used "base_url" and still passed, because classify() swallows the
+        # failure and returns its safe default.
+        connector = OllamaConnector(
+            name="ollama",
+            config={"endpoint_url": ollama_base_url(), "model_list": [_CLASSIFIER_MODEL]},
+        )
+        self._manager = SimpleNamespace(connectors={"ollama": connector})
+        self._inner = LLMConnectorClassifierClient(self._manager)
         self.raw_replies: list[str] = []
 
     async def complete(self, prompt: str, model: str, system_prompt: str | None = None) -> str:
-        """Call the model, record the raw reply, and return it unchanged."""
-        messages = ([{"role": "system", "content": system_prompt}] if system_prompt else []) + [
-            {"role": "user", "content": prompt}
-        ]
-        text, _usage = await self._connector.chat_completion(messages=messages, model=model)
+        """Delegate to the production client, recording the raw reply."""
+        text = await self._inner.complete(prompt, model, system_prompt=system_prompt)
         self.raw_replies.append(text)
         return text
 
@@ -68,7 +84,7 @@ async def test_classifier_model_is_actually_serving() -> None:
 async def test_real_gemma4_e4b_classifies_a_coding_prompt() -> None:
     """The real minimum-bar model returns a parseable structured classification."""
     await require_live_model(_CLASSIFIER_MODEL)
-    client = _RecordingOllamaClassifierClient()
+    client = _RecordingClassifierClient()
 
     result = await classify(
         "Write a Python function that reverses a linked list.",

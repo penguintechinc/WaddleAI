@@ -13,10 +13,14 @@ raise into request handling.
 
 import logging
 import os
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from posthog import Posthog
 
 logger = logging.getLogger(__name__)
 
-_posthog_client: object | None = None
+_posthog_client: "Posthog | None" = None
 
 _TRUTHY = ("1", "true", "yes", "on")
 
@@ -27,7 +31,7 @@ def _env_var_name(flag_key: str) -> str:
     return "WADDLEAI_FLAG_" + suffix.replace("-", "_").replace(".", "_").upper()
 
 
-def _get_posthog_client() -> object | None:
+def _get_posthog_client() -> "Posthog | None":
     """Lazily construct and cache the PostHog client (None if unconfigured)."""
     global _posthog_client
     api_key = os.getenv("POSTHOG_KEY")

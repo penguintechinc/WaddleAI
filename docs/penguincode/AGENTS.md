@@ -98,7 +98,7 @@ Read-only agent for understanding codebases.
 agent = ExplorerAgent(
     ollama_client=client,
     working_dir="/path/to/project",
-    model="gemma4:e4b"  # Lightweight model for reading
+    model="gemma4:12b"  # Reading code is a coding role
 )
 
 result = await agent.run("Find all test files")
@@ -195,7 +195,7 @@ Models are configured in `config.yaml` with a tiered approach for optimal VRAM u
 ```yaml
 models:
   # Orchestration (routing decisions)
-  orchestration: "gemma4:e4b"
+  orchestration: "gemma4:12b"
 
   # Planning (task breakdown)
   planning: "deepseek-coder:6.7b"
@@ -205,14 +205,14 @@ models:
   execution_lite: "qwen2.5-coder:7b"  # Simple edits
 
   # Exploration (code reading)
-  exploration: "gemma4:e4b"          # Standard reads
-  exploration_lite: "gemma4:e4b"     # Quick reads
+  exploration: "gemma4:12b"          # Standard reads
+  exploration_lite: "gemma4:12b"     # Quick reads
 
   # Research (web lookups)
   research: "gemma4:e4b"
 ```
 
-`gemma4:e4b` is the shipped default for every role above; swap in `gemma4:12b` if the host can carry it (~8GB VRAM) for more complex ops like coding.
+**`gemma4:12b` is the default for every CODING role** (orchestration, exploration, explorer, foreman) -- `gemma4:e4b` tested poorly at coding on 2026-09-08. `gemma4:e4b` remains the default for routing and general/non-code roles (research, tester), where it performs fine. `12b` needs ~8GB VRAM.
 
 **Complexity-Based Selection**:
 ChatAgent estimates task complexity and selects appropriate model:
@@ -229,7 +229,7 @@ agents:
   executor:
     model: "qwen2.5-coder:7b"
   explorer:
-    model: "gemma4:e4b"
+    model: "gemma4:12b"
   planner:
     model: "deepseek-coder:6.7b"
 ```
@@ -378,7 +378,7 @@ Tool execution is logged and displayed:
 from penguincode.agents.base import BaseAgent, AgentConfig, Permission
 
 class MyCustomAgent(BaseAgent):
-    def __init__(self, ollama_client, model="gemma4:e4b"):
+    def __init__(self, ollama_client, model="gemma4:12b"):
         config = AgentConfig(
             name="my_agent",
             model=model,

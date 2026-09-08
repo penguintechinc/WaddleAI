@@ -152,7 +152,7 @@ def test_claude_multi_turn_conversation() -> None:
     import anthropic  # type: ignore[import]
 
     client = anthropic.Anthropic(api_key=_API_KEY)
-    messages: list[dict[str, str]] = [
+    messages: list[anthropic.types.MessageParam] = [
         {"role": "user", "content": "My name is TestUser."},
         {"role": "assistant", "content": "Hello, TestUser! How can I help you today?"},
         {"role": "user", "content": "What is my name?"},
@@ -163,6 +163,9 @@ def test_claude_multi_turn_conversation() -> None:
         messages=messages,
     )
 
+    # Narrows the content-block union to TextBlock (mirrors the tag-check
+    # pattern in test_claude_simple_message_response above) before `.text`.
+    assert message.content[0].type == "text"
     reply = message.content[0].text
     assert "TestUser" in reply or "test" in reply.lower()
 

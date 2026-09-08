@@ -63,7 +63,7 @@ class StubContentFilter:
 
 
 def _policy(**overrides: Any) -> ResolvedPolicy:
-    base = {
+    base: dict[str, Any] = {
         "tier1_enabled": True,
         "tier2_enabled": True,
         "tier3_enabled": True,

@@ -31,6 +31,7 @@ console = Console()
 # Default models to pull during setup
 DEFAULT_MODELS = [
     "gemma4:e4b",
+    "gemma4:12b",
     "qwen2.5-coder:7b",
     "nomic-embed-text",  # Required for docs RAG
 ]

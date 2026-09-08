@@ -5,6 +5,18 @@
 # `trivy image --severity HIGH,CRITICAL ghcr.io/penguintechinc/waddleai/ollama:hardened`
 # (no --ignorefile) to see the live list first.
 #
+# SUPPRESSION POLICY (owner directive, 2026-09-08): a no-fix finding -- one
+# where we are waiting on the vendor or upstream -- gets a TWO WEEK review-by
+# date, not a multi-month one. Every entry below therefore carries
+# "Review by <date>" no more than 14 days out, and the weekly re-triage
+# workflow (.github/workflows/trivy-weekly-retriage.yml, via
+# scripts/check-trivyignore-review-dates.sh) files an issue once that date
+# passes. Short horizons are the point: these are bets that upstream will ship
+# a fix, and a bet nobody revisits for three months is just a silent
+# permanent exception. When re-triaging, re-verify the finding is still
+# unfixed and push the date out another two weeks -- do not extend it further
+# because it "keeps coming back".
+#
 # --- 1. Go module CVEs baked into the vendored upstream binary ---------------
 # `gobinary`-class findings against usr/bin/ollama's embedded Go module build
 # info (golang.org/x/*, stdlib, github.com/buger/jsonparser) — from
@@ -47,7 +59,7 @@ CVE-2026-56852
 # Added 2026-08-22 -- same root cause as the block above (still
 # ollama/ollama:0.32.13's vendored `stdlib`/`golang.org/x/mod` build info),
 # newly published/scored since this file was last refreshed. Review by
-# 2026-11-22 or at the next ollama upstream version bump, whichever comes
+# 2026-09-22 or at the next ollama upstream version bump, whichever comes
 # first -- re-run `trivy image --severity HIGH,CRITICAL
 # ghcr.io/penguintechinc/waddleai/ollama:hardened` (no --ignorefile) to see
 # whether a newer 0.32.x/0.33.x release has picked up patched Go modules.
@@ -105,7 +117,7 @@ CVE-2026-9538
 # the util-linux family (CVE-2026-53612/-53613/-53614), which surfaced in the
 # same scan but DOES have a published fix on trixie-security -- those are
 # pinned explicitly in the Dockerfile instead of ignored here. Review by
-# 2026-11-22 or whenever `apt-cache policy libssl3t64` shows a newer
+# 2026-09-22 or whenever `apt-cache policy libssl3t64` shows a newer
 # candidate, whichever comes first.
 CVE-2026-14456
 
@@ -119,7 +131,7 @@ CVE-2026-14456
 # libsqlite3-0` against this exact runtime-base shows Candidate == Installed
 # (3.46.1-7+deb13u1) on both trixie/main and trixie-security, so Debian
 # security has not shipped a patched package yet -- no version of this
-# Dockerfile can resolve this today. Review by 2026-11-27 or whenever
+# Dockerfile can resolve this today. Review by 2026-09-22 or whenever
 # `apt-cache policy libsqlite3-0` shows a newer candidate, whichever comes
 # first.
 CVE-2026-11822
@@ -139,7 +151,40 @@ CVE-2026-11824
 # version of this Dockerfile resolves it today. Not reachable from this image's
 # workload either: nothing here invokes an external mount helper.
 #
-# Review by 2026-12-07, or whenever `apt-cache policy util-linux` against this
+# Review by 2026-09-22, or whenever `apt-cache policy util-linux` against this
 # runtime-base shows a Candidate newer than Installed, whichever comes first.
 # The weekly re-triage workflow will flag it if a fix lands sooner.
 CVE-2026-76642
+
+# --- 2026-09-08: DB drift round two, after CVE-2026-76642 -------------------
+# The 76642 entry above worked (it no longer appears in the gate output), but
+# the vuln DB moved again between 09-07 and 09-08 and surfaced six more. Two
+# distinct categories, verified separately rather than suppressed as a batch.
+#
+# (a) Debian base packages, no fix published. Trivy status "affected" with an
+#     EMPTY FixedVersion against installed util-linux 2.41.5-0+deb13u1 and
+#     systemd 257.13-1~deb13u1 -- same shape and same treatment as the rest of
+#     category 2. Nothing in this image invokes an external mount helper,
+#     nsenter, or systemd-homed, so none of these are reachable from its
+#     workload.
+CVE-2026-78408
+CVE-2026-78409
+CVE-2026-78410
+CVE-2026-16742
+#
+# (b) Go modules embedded in the vendored upstream binary -- category 1, but
+#     these two report a FixedVersion, so they were checked before being
+#     suppressed rather than assumed unfixable:
+#       golang.org/x/crypto v0.43.0 (CVE-2026-56854, CRITICAL) -> fixed 0.55.0
+#       golang.org/x/image  v0.22.0 (CVE-2026-46603, HIGH)     -> fixed 0.45.0
+#     The fixed version is the MODULE's, not any consumable ollama release:
+#     go.mod at v0.32.13 (pinned), v0.32.15 and v0.33.3 (latest stable, as of
+#     2026-09-08) ALL still pin x/crypto v0.43.0 and x/image v0.22.0, so
+#     bumping the base image fixes neither. Resolving them needs a from-source
+#     rebuild with patched modules, explicitly out of scope for spec §10.2.
+#     CVE-2026-56854 is in golang.org/x/crypto/ssh; this image serves HTTP and
+#     exposes no SSH surface, so the package is linked but not reached.
+#     ESCALATE AND RE-EVALUATE if an ollama release bumps x/crypto, or if the
+#     deployment ever exposes an SSH listener. Review by 2026-09-22.
+CVE-2026-56854
+CVE-2026-46603

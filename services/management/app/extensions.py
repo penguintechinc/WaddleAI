@@ -53,9 +53,23 @@ def init_db(app: Quart) -> DB:
             # Step 2: Connect with penguin-dal for runtime operations (auto-reflects schema)
             # penguin-dal 0.1.0 (released) init_dal returns None and parks the DB on
             # app.extensions["_penguin_dal"]; newer penguin-dal returns it directly.
-            db = init_dal(app, uri=db_url, pool_size=int(app.config.get("DB_POOL_SIZE", 10)))
-            if db is None:
-                db = app.extensions["_penguin_dal"]
+            connected = init_dal(app, uri=db_url, pool_size=int(app.config.get("DB_POOL_SIZE", 10)))
+            if connected is None:
+                connected = app.extensions["_penguin_dal"]
+
+            # init_dal()'s return type also covers DatabaseManager (read/write
+            # splitting), which only happens when a read_uri is supplied --
+            # never the case for this call. Narrowing here (rather than
+            # widening the module-level `db: DB | None`) keeps every other
+            # call site's plain-DB assumption (callable, .commit()) intact;
+            # a DatabaseManager slipping through would silently break all of
+            # them, so fail loudly instead.
+            if not isinstance(connected, DB):
+                raise TypeError(
+                    f"init_dal() returned {type(connected).__name__}, expected DB "
+                    "(no read_uri was configured for read/write splitting)"
+                )
+            db = connected
 
             logger.info(f"Database initialized successfully on attempt {attempt}")
             return db
@@ -69,12 +83,18 @@ def init_db(app: Quart) -> DB:
                 logger.error(f"Failed to connect to database after {max_retries} attempts")
                 raise
 
+    # Unreachable: max_retries is a positive constant, so the loop above
+    # always either returns or re-raises on its final iteration. Satisfies
+    # mypy's control-flow analysis, which can't prove that statically.
+    raise RuntimeError("database initialization loop exited without returning")
+
 
 def init_cache(app: Quart) -> redis.Redis | None:
     """Initialize cache (Valkey/Redis) connection with CACHE_* env precedence."""
     global redis_client, cache_client
 
     # Precedence: CACHE_HOST > REDIS_URL
+    cache_url: str | None
     cache_host = app.config.get("CACHE_HOST")
     if cache_host:
         # Build redis-protocol URL from CACHE_* components
@@ -177,7 +197,12 @@ def init_default_data(db: DB, config: dict | None = None) -> str | None:
         )
         logger.info("Created default organization")
     else:
-        org_id = db(db.organizations.name == "default").select().first().id
+        existing_org = db(db.organizations.name == "default").select().first()
+        if existing_org is None:
+            # Unreachable: the `if not ...select()` check above just proved
+            # a "default" org row exists; guard only narrows the type.
+            raise RuntimeError("default organization vanished between select and first()")
+        org_id = existing_org.id
 
     # Create admin user if doesn't exist
     if not db(db.users.username == "admin").select():

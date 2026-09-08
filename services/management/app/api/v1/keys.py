@@ -4,8 +4,10 @@ import asyncio
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any
 
 from passlib.hash import bcrypt
+from penguin_dal.db import DB
 from quart import g, jsonify, request
 from quart_schema import security_scheme, tag, validate_request, validate_response
 
@@ -13,7 +15,20 @@ from ...extensions import db
 from . import api_v1_bp
 from .auth import require_auth
 
-_BEARER_AUTH = [{"bearerAuth": []}]
+_BEARER_AUTH: list[dict[str, list[str]]] = [{"bearerAuth": []}]
+
+
+def _db() -> DB:
+    """Return the process-wide penguin-dal handle, narrowed away from ``None``.
+
+    ``extensions.db`` is declared ``DB | None`` because it starts unset
+    before ``init_db()`` runs at startup; every route below only executes
+    after that point, so this narrows the type for mypy without adding any
+    reachable failure mode.
+    """
+    if db is None:
+        raise RuntimeError("database not initialized")
+    return db
 
 
 # ---------------------------------------------------------------------------
@@ -329,7 +344,8 @@ async def create_key(data: CreateKeyRequest):
 
         def _validate_target_user() -> tuple[object, int]:
             """Fetch target user and validate org membership + role hierarchy."""
-            target = db(db.users.id == target_user_id).select().first()
+            database = _db()
+            target = database(database.users.id == target_user_id).select().first()
             if not target:
                 return None, 404
             if target.organization_id != target_org_id:
@@ -398,7 +414,11 @@ async def update_key(key_id, data: UpdateKeyRequest):
     user_id = g.user.get("user_id")
     org_id = g.user.get("organization_id")
 
-    key = await asyncio.to_thread(lambda: db(db.virtual_keys.id == key_id).select().first())
+    def _fetch_key():
+        database = _db()
+        return database(database.virtual_keys.id == key_id).select().first()
+
+    key = await asyncio.to_thread(_fetch_key)
 
     if not key:
         return jsonify({"error": "Key not found"}), 404
@@ -410,7 +430,7 @@ async def update_key(key_id, data: UpdateKeyRequest):
         elif user_role not in ["resource_manager"] and key.user_id != user_id:
             return jsonify({"error": "Access denied"}), 403
 
-    update_fields = {}
+    update_fields: dict[str, Any] = {}
 
     if data.name is not None:
         update_fields["name"] = data.name

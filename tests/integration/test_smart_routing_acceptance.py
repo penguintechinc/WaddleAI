@@ -238,6 +238,8 @@ class TestBudgetPressureShiftsEscalation:
         # tests/unit/routing/test_classifier.py + test_tool_type_cascade.py.
         decision = await engine.decide(request)
 
+        assert decision.trace is not None
+        assert decision.trace.pressure_signals is not None
         assert decision.trace.pressure_signals["threshold_delta"] == 1
         assert decision.trace.escalated is False
         assert decision.model == "local-model"
@@ -280,6 +282,7 @@ class TestMultiTurnStickyEscalation:
             )
         )
         assert turn_1.model == "commercial-model"
+        assert turn_1.trace is not None
         assert turn_1.trace.escalated is True
 
         turn_2 = await engine.decide(
@@ -295,6 +298,7 @@ class TestMultiTurnStickyEscalation:
             )
         )
         assert turn_2.model == "commercial-model"
+        assert turn_2.trace is not None
         assert turn_2.trace.escalated is True
 
 

@@ -3,6 +3,7 @@
 import json
 import math
 import os
+from typing import Any
 
 from shared.cache.exact import CachedResponse
 from shared.cache.semantic import CtxFlags, SemanticCache, is_semantic_eligible
@@ -10,9 +11,9 @@ from shared.cache.semantic import CtxFlags, SemanticCache, is_semantic_eligible
 _FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
 
 
-def _base_flags(**overrides) -> CtxFlags:
+def _base_flags(**overrides: Any) -> CtxFlags:
     """Base flags."""
-    base = dict(
+    base: dict[str, Any] = dict(
         is_single_turn=True, has_tools_schema=False, has_memory_injection=False, temperature=0.0
     )
     base.update(overrides)

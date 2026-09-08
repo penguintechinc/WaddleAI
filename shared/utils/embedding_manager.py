@@ -187,7 +187,18 @@ class EmbeddingManager:
             messages=[{"role": "user", "content": prompt}],
         )
 
-        raw = message.content[0].text.strip()
+        # getattr(..., default) rather than `message.content[0].text` -- the SDK
+        # types this as a union of ~10 content-block variants and only the text
+        # one carries `.text`; getattr keeps this duck-typed (matching what the
+        # Anthropic client actually returns for a plain, non-tool completion)
+        # instead of importing and isinstance-checking the SDK's TextBlock class.
+        block_text = getattr(message.content[0], "text", None)
+        if block_text is None:
+            raise RuntimeError(
+                f"Anthropic response content block is not text "
+                f"(got {type(message.content[0]).__name__})"
+            )
+        raw = block_text.strip()
         # Strip any accidental markdown code fences
         if raw.startswith("```"):
             raw = raw.split("```")[1]

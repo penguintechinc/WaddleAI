@@ -26,6 +26,7 @@ from hashlib import sha256
 from typing import Any
 
 from passlib.hash import bcrypt
+from penguin_dal.db import DB
 from quart import current_app, g, jsonify, request
 from quart_schema import security_scheme, tag, validate_request, validate_response
 
@@ -38,7 +39,20 @@ from ...extensions import db
 from . import api_v1_bp
 from .auth import require_auth, require_scope
 
-_BEARER_AUTH = [{"bearerAuth": []}]
+_BEARER_AUTH: list[dict[str, list[str]]] = [{"bearerAuth": []}]
+
+
+def _db() -> DB:
+    """Return the process-wide penguin-dal handle, narrowed away from ``None``.
+
+    ``extensions.db`` is declared ``DB | None`` because it starts unset
+    before ``init_db()`` runs at startup; every route below only executes
+    after that point, so this narrows the type for mypy without adding any
+    reachable failure mode.
+    """
+    if db is None:
+        raise RuntimeError("database not initialized")
+    return db
 
 
 # ---------------------------------------------------------------------------
@@ -360,7 +374,8 @@ async def create_mcp_endpoint(data: CreateMcpEndpointRequest):
 
 def _get_org_scoped_endpoint(endpoint_id: int, org_id: int):
     """Return an `mcp_endpoints` row, distinguishing "not found" from "wrong org"."""
-    row = db(db.mcp_endpoints.id == endpoint_id).select().first()
+    conn = _db()
+    row = conn(conn.mcp_endpoints.id == endpoint_id).select().first()
     if row is None:
         return None, "not_found"
     if row.org_id != org_id:
@@ -498,10 +513,11 @@ def _verify_caller_owns_key(virtual_key: str, org_id: int, user_id: int):
 
     Mirrors `auth.py::verify_api_key`.
     """
-    keys = db(
-        (db.virtual_keys.organization_id == org_id)
-        & (db.virtual_keys.user_id == user_id)
-        & (db.virtual_keys.enabled == True)  # noqa: E712 -- PyDAL query, not a Python bool compare
+    conn = _db()
+    keys = conn(
+        (conn.virtual_keys.organization_id == org_id)
+        & (conn.virtual_keys.user_id == user_id)
+        & (conn.virtual_keys.enabled == True)  # noqa: E712 -- PyDAL query, not a Python bool compare
     ).select()
     for key in keys:
         if bcrypt.verify(virtual_key, key.key_hash):
@@ -580,7 +596,7 @@ async def opencode_config():
 
 
 def _link_state_secret() -> str:
-    return current_app.config.get("SECRET_KEY") or os.getenv("JWT_SECRET", "")
+    return str(current_app.config.get("SECRET_KEY") or os.getenv("JWT_SECRET", ""))
 
 
 def _sign_link_state(endpoint_id: int, user_id: int) -> str:
@@ -678,9 +694,16 @@ async def initiate_mcp_link(endpoint_id: int):
             client_secret=client_secret,
         )
 
+    resolved_client_id = auth_config.client_id
+    if resolved_client_id is None:
+        # Unreachable in practice: the branch above either returns early or
+        # reassigns `auth_config` from a fresh DCR registration that always
+        # sets `client_id`. Guard exists only to narrow the type for mypy.
+        return _validation_error("endpoint has no client_id after registration")
+
     state = _sign_link_state(endpoint_id, user_id)
     authorization_url = outbound_auth.build_authorization_url(
-        auth_config, client_id=auth_config.client_id, state=state
+        auth_config, client_id=resolved_client_id, state=state
     )
     return jsonify(
         {

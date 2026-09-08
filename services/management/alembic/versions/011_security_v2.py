@@ -37,6 +37,7 @@ Create Date: 2026-07-09
 """
 
 from collections.abc import Sequence
+from typing import Any
 
 import sqlalchemy as sa
 from alembic import op
@@ -75,7 +76,7 @@ _GLOBAL_DEFAULTS = {
 # everything from 'global' -- see module docstring for why this is the
 # faithful migration, not a lossy shortcut). Only the structural
 # scope/direction columns are set.
-_ORG_ROW_DEFAULTS = {k: None for k in _GLOBAL_DEFAULTS}
+_ORG_ROW_DEFAULTS: dict[str, Any] = {k: None for k in _GLOBAL_DEFAULTS}
 _ORG_ROW_DEFAULTS["direction"] = "both"
 
 
