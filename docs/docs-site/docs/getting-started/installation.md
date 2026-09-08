@@ -11,6 +11,55 @@ WaddleAI has three deployable services — **proxy** (OpenAI-compatible data pla
 - `kubectl` + Helm v4, and a local cluster (MicroK8s on Linux, Docker Desktop Kubernetes on macOS/Windows) if you want the full stack running in Kubernetes
 - `git`, `uv` (for `make venv`)
 
+## GPU requirements (local model serving)
+
+Only needed if you serve models locally via Ollama. A deployment that routes
+exclusively to commercial providers needs no GPU at all.
+
+### The e4b-only baseline
+
+The minimum viable local set is three models — the routing classifier, the
+always-on security auditor, and the embedding model:
+
+| Model | Role | VRAM |
+|---|---|---|
+| `gemma4:e4b` | routing classifier, summarize, docs-fetch | 3.26 GB |
+| `shieldgemma:2b` | security auditor (always on) | 2.14 GB |
+| `nomic-embed-text` | embeddings | 0.32 GB |
+| **Total** | | **5.72 GB** |
+
+Measured with all three resident simultaneously on a live host, Q4_K_M
+quantization. These are **base weights at idle** — the KV cache grows on top of
+them as context length and concurrency increase, and that growth is what
+actually determines whether a card holds up.
+
+### Minimum and recommended
+
+| | VRAM | Example cards | Reality |
+|---|---|---|---|
+| **Minimum** | 8 GB | RTX 4060, RTX 5060 | Works. ~2.3 GB left for KV cache after the base set — enough for short contexts and low concurrency, tight for anything else |
+| **Recommended** | 12 GB+ | RTX 3060 12GB, RTX 4070 | Comfortable headroom for long contexts, concurrent requests, and `gemma4:12b` for coding roles |
+
+8 GB is a real floor, not a comfortable one. Pushing an 8 GB card to its limit
+with an LLM plus two embedding-class models leaves very little room for the KV
+cache to expand during long sessions or high-throughput retrieval. Budget for a
+display buffer too if the card is also driving a monitor.
+
+### Adding gemma4:12b for coding
+
+`gemma4:12b` is the default for coding roles (orchestration, exploration) and
+costs **8.09 GB** on its own — more than the entire e4b-only set. Running it
+alongside the baseline needs roughly 14 GB resident, so it is a 16 GB-class
+card, or a second host, not an 8 GB upgrade path.
+
+### A note on model sizes
+
+Do not size from the download. `gemma4:e4b` is **9.61 GB on disk but 3.26 GB
+resident**, because its MatFormer packaging ships more weights than the
+effective-4B submodel actually loads. By contrast `gemma4:12b` is 7.56 GB on
+disk and 8.09 GB resident. The disk figure alone would tell you e4b is the more
+expensive model, which is backwards.
+
 ## Option A: Kubernetes with Helm (recommended)
 
 The Helm chart at `k8s/helm/waddleai` is the only supported deployment path for every environment (alpha, beta, production). Full walkthrough, values-file reference, and ingress/TLS setup: [Kubernetes Deployment](../deployment/kubernetes.md).

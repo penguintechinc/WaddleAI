@@ -407,11 +407,20 @@ Use WaddleAI routing:
 |----------|-------|------|---------|
 | Routing / quick / light | gemma4:e4b | ~4GB | Fast — supported minimum |
 | Complex ops / coding | gemma4:12b | ~8GB | Recommended, not the default — opt in |
+| Embeddings | nomic-embed-text | ~0.3GB | Required for memory/RAG |
 | Code | codellama | 4GB | Excellent |
 | Analysis | mixtral | 26GB | Excellent |
 | Embeddings | nomic-embed-text | 274MB | Good |
 
 ### By Hardware
+
+> **Sizing from VRAM, not download size.** The complete e4b-only set
+> (`gemma4:e4b` + `shieldgemma:2b` + `nomic-embed-text`) is **5.72 GB
+> resident**, measured with all three loaded at once. 8 GB is the floor and
+> 12 GB+ the recommendation — see
+> [GPU requirements](../getting-started/installation.md#gpu-requirements-local-model-serving).
+> Note `gemma4:e4b` is 9.61 GB on disk but only 3.26 GB resident; the download
+> size is misleading.
 
 **4GB RAM, No GPU**:
 - gemma4:e4b (routing; tight)
