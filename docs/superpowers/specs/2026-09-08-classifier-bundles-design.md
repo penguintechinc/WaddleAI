@@ -97,7 +97,7 @@ guard_prompt: |
   ...definition of each category, in the guard's instruction slot...
 ```
 
-**A bundle names no model.** There is deliberately no `recommended_guard` or
+**A bundle names no GUARD model.** There is deliberately no `recommended_guard` or
 equivalent field: bundles and the model inventory are independent axes that meet
 only at runtime resolution. A bundle says *what* to classify for and supplies the
 knowledge to do it; the inventory says *which models exist and where*; the
@@ -118,12 +118,46 @@ one.
 The consequence for the response contract is below: if the guard can change
 per request, the caller must be told which one actually ran.
 
+### The corpus embedding model IS a bundle property
+
+The rule above covers the *guard* model only. The **embedding** model that
+indexed a bundle's corpus is a different kind of thing and must be recorded on
+the bundle:
+
+| | Guard model | Embedding model |
+|---|---|---|
+| Chosen | per request, substitutable mid-flight | at index time, baked into the stored vectors |
+| Can change freely | yes — failover, new version, reroute | **no** — changing it invalidates every vector in that corpus |
+| Named by the bundle | no | **yes** |
+
+Same dimension is not the same vector space. Two models can both emit 768 dims
+via Matryoshka truncation and still be mutually unintelligible: a query embedded
+with model A, compared against documents embedded with model B, yields
+*meaningless* similarity — not degraded, meaningless — and nothing errors.
+Retrieval just quietly gets worse.
+
+So `bundle.yaml` carries `corpus_embedding_model`, and queries against that
+bundle's corpus are embedded with that same model. Not recording it is the bug:
+nothing would know which model to embed the query with.
+
+This is also what lets bundles differ sensibly. A `hate-speech` corpus is slurs
+and coded language across many languages — `embeddinggemma` (100+ languages)
+is the right indexer. A `security-attack` corpus is long-form English technical
+prose — `nomic-embed-text` (8K context vs EmbeddingGemma's 2K) suits it better.
+Forcing one embedding model across all bundles would compromise both.
+
+Changing a bundle's `corpus_embedding_model` is therefore a **re-index**, not a
+config edit, and is a version bump for that bundle.
+
 ### Storage
 
 - `classifier_bundles` — `name`, `version`, `scope` (`global` only today, column
   present so org-authored bundles are a later migration rather than a redesign),
   `categories` JSON, `guard_prompt`, `mandatory`, `enabled`, timestamps.
-- `classifier_bundle_corpus` — `bundle_id`, `doc_path`, `content`, `embedding`.
+- `classifier_bundle_corpus` — `bundle_id`, `doc_path`, `content`, `embedding`,
+  `embedding_model`, `embedding_dimensions`. The model is stored per row, not
+  only per bundle, so a partially re-indexed corpus is detectable rather than
+  silently mixed.
   Retrieval reuses the existing knowledge layer (`shared/knowledge/`) rather than
   introducing a second vector store.
 - `classifier_bundles_tenant` — `org_id`, `bundle_id`, `always_on`, `updated_by`,
