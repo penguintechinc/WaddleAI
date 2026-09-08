@@ -153,6 +153,10 @@ inputs makes it explicable.
 
 ### OpenTelemetry emission
 
+Routing conforms to the common decision envelope in
+`2026-09-08-decision-audit-design.md`; what follows is the routing-specific
+instance of it.
+
 Every routing decision emits **three signals**, split by what each is good at.
 The split is not stylistic — putting the wrong field in the wrong signal breaks
 the backend.
