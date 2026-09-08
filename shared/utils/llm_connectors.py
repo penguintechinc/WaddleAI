@@ -1331,7 +1331,7 @@ class OllamaConnector(LLMConnector):
     ) -> tuple[str, dict[str, Any]]:
         """Generate Ollama chat completion."""
         try:
-            payload = {
+            payload: dict[str, Any] = {
                 "model": model,
                 "messages": messages,
                 "stream": False,
@@ -1340,6 +1340,15 @@ class OllamaConnector(LLMConnector):
                     "num_predict": kwargs.get("max_tokens", -1),
                 },
             }
+            # Gemma 4 reasons by default, and its thinking tokens are billed
+            # against num_predict while appearing in NEITHER `response` nor
+            # `thinking` -- so a caller with a modest token budget gets an empty
+            # string back and no error. Callers that want structured output
+            # rather than reasoning pass think=False. Only sent when explicitly
+            # set, so models without a thinking mode are unaffected.
+            think = kwargs.get("think")
+            if think is not None:
+                payload["think"] = think
 
             async with self.session.post(
                 f"{self.endpoint_url}/api/chat",
