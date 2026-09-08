@@ -1,6 +1,6 @@
 """Real-model classifier fixture test (spec §14.4): nightly/GPU CI tier only.
 
-Deselected in the default unit run -- exercises the real gemma4:e2b guard
+Deselected in the default unit run -- exercises the real gemma4:e4b guard
 model via the fleet's Ollama connector instead of StubClassifierClient.
 Requires WADDLEAI_GPU_TESTS=1 and a reachable Ollama endpoint (OLLAMA_HOST),
 neither of which is present in the default unit-test environment.
@@ -22,8 +22,8 @@ _GPU_TESTS_ENABLED = os.getenv("WADDLEAI_GPU_TESTS", "").lower() in ("1", "true"
     not _GPU_TESTS_ENABLED,
     reason="nightly/GPU CI tier only -- set WADDLEAI_GPU_TESTS=1 with a reachable Ollama endpoint",
 )
-async def test_real_gemma4_e2b_classifies_a_coding_prompt():
-    """Real gemma4:e2b returns a plausible structured classification for a code prompt."""
+async def test_real_gemma4_e4b_classifies_a_coding_prompt():
+    """Real gemma4:e4b returns a plausible structured classification for a code prompt."""
     from shared.utils.llm_connectors import OllamaConnector
 
     connector = OllamaConnector(
@@ -41,7 +41,7 @@ async def test_real_gemma4_e2b_classifies_a_coding_prompt():
     result = await classify(
         "Write a Python function that reverses a linked list.",
         _OllamaClassifierClient(),
-        model="gemma4:e2b",
+        model="gemma4:e4b",
     )
 
     assert result.tool_type

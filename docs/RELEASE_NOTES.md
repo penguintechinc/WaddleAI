@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Models
+
+- **Gemma 4 minimum raised from `e2b` to `e4b`.** Testing on 2026-09-07 found `gemma4:e2b` too weak for stage-2 routing classification -- it does not determine tool type and complexity reliably enough to route on. `e4b` is now the supported minimum for routing and the other quick/light internal roles (summarization, docs-fetch); **`gemma4:12b` is the recommendation for general-purpose local generation** wherever the host can carry it, and is the new default for the local-only profile's chat model (`WADDLEAI_LOCAL_CHAT_MODEL`).
+- **Migration 019** retags existing `model_registry` and `model_assignments` rows from `gemma4:e2b` to `gemma4:e4b` and raises that registry row's `min_vram` from 2 GB to 4 GB. Only rows still on the withdrawn tag are touched -- an operator who already moved an assignment to `12b`/`26b`/`31b` keeps their choice. Migrations 008 and 010 are left as the historical seeds they are.
+- The Routing LLM Model selector in the WebUI no longer offers `e2b`. A deployment still pinned to it keeps seeing its stored value as a disabled legacy option, so the selector never silently misreports which model is live.
+- Valid Gemma 4 tags remain `e2b`/`e4b`/`12b`/`26b`/`31b`. The `e` prefix marks the MatFormer effective-size variants only, so the 12B tag is `12b`, never `e12b`, and `gemma4:2b` does not exist.
+
 ### Security
 
 - **Dropped the chromadb memory/RAG backend** (`ChromaDBMemoryStore` in `shared/utils/memory_integration.py`, `ChromaDBRAGStore` in `shared/utils/rag_integration.py`, and the `chromadb` dependency itself). PYSEC-2026-311 is a pre-authentication code injection vulnerability in chromadb's server component with no fixed release in any version >=1.0.0; it had been carried as an accepted `pip-audit` exception. pgvector (the default) and qdrant already cover the same ground, so the backend was removed instead of the exception being carried forward.

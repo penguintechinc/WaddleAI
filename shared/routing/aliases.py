@@ -7,8 +7,8 @@ model names resolve through ``model_aliases`` (``gpt-4o`` -> local
 
 Also implements the provider-qualified model string parsing rule: a prefix is
 a provider only if it exactly matches a registered provider name, split on
-the FIRST colon only -- Ollama tags contain colons natively (``gemma4:e2b``
-is a model, not provider ``gemma4`` model ``e2b``).
+the FIRST colon only -- Ollama tags contain colons natively (``gemma4:e4b``
+is a model, not provider ``gemma4`` model ``e4b``).
 """
 
 import asyncio
@@ -51,7 +51,7 @@ def split_provider_prefix(model: str) -> tuple[str | None, str]:
 
     Splits on the FIRST colon only, and only when the prefix exactly matches
     a registered provider name -- otherwise the whole string is the model
-    name (so bare Ollama tags like "gemma4:e2b" are never misparsed).
+    name (so bare Ollama tags like "gemma4:e4b" are never misparsed).
 
     Args:
         model: The raw client-supplied model string.

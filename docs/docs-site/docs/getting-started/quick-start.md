@@ -28,9 +28,6 @@ DATABASE_URL=postgresql://waddleai:waddleai@postgres:5432/waddleai
 REDIS_HOST=redis
 REDIS_PORT=6379
 JWT_SECRET=change_this_in_production_please_use_openssl_rand_hex
-ROUTING_LLM_PROVIDER=ollama
-ROUTING_LLM_MODEL=llama3.2:1b
-ROUTING_LLM_ENDPOINT=http://ollama:11434
 ```
 
 ## Step 2: Start Services (2 minutes)
@@ -121,7 +118,13 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 }
 ```
 
-## Step 6: Configure Your First Provider (1 minute)
+## Step 6: Configure Routing Model (30 seconds)
+
+1. Navigate to Management Portal → Routing → "Routing LLM Model"
+2. Set to `gemma4:e4b` (minimum supported; e2b was withdrawn 2026-09-07)
+3. Save
+
+## Step 7: Configure Your First Provider (1 minute)
 
 Before WaddleAI can route to external LLMs, you need to add provider credentials.
 
@@ -132,8 +135,8 @@ Before WaddleAI can route to external LLMs, you need to add provider credentials
 curl -fsSL https://ollama.com/install.sh | sh
 
 # Pull models
-ollama pull llama3.2:1b   # Fast routing model
-ollama pull llama3.2:3b   # General purpose
+ollama pull gemma4:e4b    # Routing (minimum supported)
+ollama pull gemma4:12b    # General purpose
 ```
 
 In Management Portal:

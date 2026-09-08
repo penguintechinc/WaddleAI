@@ -215,7 +215,7 @@ Map WaddleAI model names to friendly names in Open WebUI:
 
 ```bash
 # In Open WebUI settings
-MODEL_NAMES='{"gpt-4":"GPT-4 (via WaddleAI)","claude-3-opus":"Claude 3 Opus","llama3.2:1b":"Llama 3.2 1B (Local)"}'
+MODEL_NAMES='{"gpt-4":"GPT-4 (via WaddleAI)","claude-3-opus":"Claude 3 Opus","gemma4:e4b":"Gemma 4 E4B (Local)"}'
 ```
 
 ### Model Visibility
@@ -284,7 +284,7 @@ Open WebUI benefits from WaddleAI's routing LLM:
 
 - Programming questions → codellama or Claude
 - Complex reasoning → GPT-4 or Claude Opus
-- Simple queries → Local Ollama models
+- Simple queries → gemma4:12b or local Ollama models
 - Analysis tasks → Specialized models
 
 ### Model Preferences

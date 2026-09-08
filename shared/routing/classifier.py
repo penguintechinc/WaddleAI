@@ -3,7 +3,8 @@
 Only consulted when stage-1 heuristics punt. A guard model returns structured
 JSON whose primary output is ``tool_type`` plus ``{complexity, domain,
 needs_reasoning}``, cached in Valkey by prefix hash. Model per §2.3:
-``gemma4:e2b`` default (Apache-2.0, no dual-default alternative required),
+``gemma4:e4b`` default (Apache-2.0, no dual-default alternative required;
+``e2b`` tested below the usable bar 2026-09-07 and is no longer offered),
 resolved via the ``routing-classifier`` assignment row. Stubbed in the unit
 test tier (see StubClassifierClient); a ``@pytest.mark.gpu`` nightly test
 exercises the real model.
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 _CACHE_PREFIX = "waddleai:route:cls"
 _DEFAULT_CACHE_TTL = 3600
-_DEFAULT_CLASSIFIER_MODEL = "gemma4:e2b"
+_DEFAULT_CLASSIFIER_MODEL = "gemma4:e4b"
 
 _SAFE_DEFAULT_TOOL_TYPE = "general"
 _SAFE_DEFAULT_COMPLEXITY = 1

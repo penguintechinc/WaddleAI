@@ -1,13 +1,15 @@
-"""Real stage-2 classifier connector (spec §7.2, §2.3): ``gemma4:e2b``.
+"""Real stage-2 classifier connector (spec §7.2, §2.3): ``gemma4:e4b``.
 
 Adapts an ``LLMConnectionManager`` (already built for provider dispatch,
 ``shared.utils.llm_connectors``) to the ``shared.routing.classifier.ClassifierClient``
 protocol so ``RoutingEngine`` can run real stage-2 classification instead of
 degrading to the safe ``"general"`` fallback with ``classifier_client=None``.
 
-Model: ``gemma4:e2b`` (Apache-2.0, no dual-default alternative required per
+Model: ``gemma4:e4b`` (Apache-2.0, no dual-default alternative required per
 §2.3) -- note valid Gemma 4 tags are ``e2b``/``e4b``/``12b``/``26b``/``31b``;
-there is no ``2b`` tag and ``gemma4:2b`` is unpullable. This is the same
+there is no ``2b`` tag and ``gemma4:2b`` is unpullable. ``e2b`` was the
+previous default and was withdrawn on 2026-09-07: it is too weak to classify
+reliably, so ``e4b`` is the supported floor. This is the same
 default as ``shared.routing.classifier._DEFAULT_CLASSIFIER_MODEL`` and the
 ``routing-classifier`` internal-function assignment row seeded by migration
 010. It is distinct from the security-audit assignment's ShieldGemma model
@@ -57,7 +59,7 @@ class LLMConnectorClassifierClient:
                 for provider dispatch.
             fallback_provider: Connector name to use when no connector's
                 ``model_list`` explicitly advertises the classifier model --
-                ``gemma4:e2b`` is Ollama-served by convention (matches the
+                ``gemma4:e4b`` is Ollama-served by convention (matches the
                 retired ``LLMRequestRouter._call_routing_llm``'s selection
                 rule).
 

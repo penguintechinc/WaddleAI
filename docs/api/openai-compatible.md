@@ -65,15 +65,15 @@ Prefix the `model` field with a provider name to pin **both** the provider and t
 ```python
 model = "anthropic:claude-opus-5-1m"  # this model, from Anthropic directly
 model = "bedrock:claude-opus-5-1m"  # the same model, via AWS Bedrock
-model = "ollama:gemma4:e2b"  # local Ollama
-model = "gemma4:e2b"  # no provider pinned — WaddleAI routes
+model = "ollama:gemma4:e4b"  # local Ollama
+model = "gemma4:e4b"  # no provider pinned — WaddleAI routes
 ```
 
 This matters because naming a model does not determine who serves it. The same Claude model is reachable through Anthropic direct, AWS Bedrock and GCP Vertex, each with different data residency, contractual terms, quota pools and pricing. Without a pin, WaddleAI chooses.
 
 It works in the plain `model` field rather than a header, so any OpenAI-compatible SDK supports it with no special handling.
 
-**Parsing**: the prefix is treated as a provider **only if it exactly matches a known provider** — `openai`, `anthropic`, `ollama`, `llamacpp`, `gemini`, `bedrock`, `azure_openai`, `cohere`, `xai` — and only the first colon is split on. Otherwise the whole string is the model name. That rule is why `gemma4:e2b` still resolves as a model: Ollama tags contain colons natively, and there is no provider called `gemma4`.
+**Parsing**: the prefix is treated as a provider **only if it exactly matches a known provider** — `openai`, `anthropic`, `ollama`, `llamacpp`, `gemini`, `bedrock`, `azure_openai`, `cohere`, `xai` — and only the first colon is split on. Otherwise the whole string is the model name. That rule is why `gemma4:e4b` still resolves as a model: Ollama tags contain colons natively, and there is no provider called `gemma4`.
 
 **A pin disables substitution.** If the pinned provider is unavailable the request fails with a typed error rather than being served by another provider — pinning is usually a data-residency or contractual decision, and silently substituting would fail open on exactly that constraint. Org allow-lists and capability checks still apply; a pin cannot reach a provider your org is not permitted to use.
 

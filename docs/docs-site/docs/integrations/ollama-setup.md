@@ -37,23 +37,33 @@ docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama
 
 ### Routing Model (Required)
 
-Fast model for routing decisions:
+The stage-2 routing classifier, and the other quick/light internal roles
+(summarization, docs-fetch):
 
 ```bash
-ollama pull llama3.2:1b
+ollama pull gemma4:e4b
 ```
+
+`gemma4:e4b` is the **supported minimum**. `gemma4:e2b` was the default until
+2026-09-07 and was withdrawn: it does not classify tool type and complexity
+reliably enough to route on. Nothing below `e4b` — and in particular no sub-2B
+model such as `llama3.2:1b` — is supported for routing or memory work.
+
+Valid Gemma 4 tags are `e2b`/`e4b`/`12b`/`26b`/`31b`. The `e` prefix marks the
+MatFormer effective-size variants only, so the 12B tag is `12b`, never `e12b`,
+and `gemma4:2b` does not exist.
 
 ### General Purpose Models
 
+For general generation, reach for `gemma4:12b` wherever the host can carry it:
+
 ```bash
-# Fast, efficient
-ollama pull llama3.2:3b
+# Recommended default for general local generation
+ollama pull gemma4:12b
 
-# Balanced performance
-ollama pull llama3.2:8b
-
-# Best quality
-ollama pull llama3.2:70b
+# Larger, if the GPU allows
+ollama pull gemma4:26b
+ollama pull gemma4:31b
 ```
 
 ### Code Models
@@ -100,13 +110,14 @@ Management Portal:
 
 ### Set as Routing LLM
 
-Edit `.env`:
+The routing classifier's model is **not** an environment variable. It is the
+`routing-classifier` row in `model_assignments`, edited in the Management
+Portal under **Routing → Routing LLM Model** (admin only). The selector offers
+`gemma4:e4b` (default), `gemma4:12b`, `gemma4:26b` and `gemma4:31b`.
 
-```bash
-ROUTING_LLM_PROVIDER=ollama
-ROUTING_LLM_MODEL=llama3.2:1b
-ROUTING_LLM_ENDPOINT=http://localhost:11434
-```
+Point the Ollama provider itself at your endpoint (Management Portal → LLM
+Providers → Base URL, e.g. `http://localhost:11434`); the classifier is served
+by whichever connector advertises the assigned model, Ollama by convention.
 
 ### Configure Routing
 
@@ -152,7 +163,7 @@ volumes:
 Pull models in container:
 
 ```bash
-docker-compose exec ollama ollama pull llama3.2:1b
+docker-compose exec ollama ollama pull gemma4:e4b
 docker-compose exec ollama ollama pull codellama
 ```
 
@@ -232,9 +243,9 @@ ollama run python-expert "Write a Python function"
 
 **CPU Only**:
 ```bash
-# Use smaller models
-ollama pull llama3.2:1b  # ~1GB RAM
-ollama pull llama3.2:3b  # ~2GB RAM
+# Smallest supported routing model
+ollama pull gemma4:e4b   # ~4GB RAM
+ollama pull llama3.2:3b  # ~2GB RAM (general use only -- not for routing)
 ```
 
 **GPU**:
@@ -357,8 +368,8 @@ ollama pull llama3.2:3b
 # Use quantized models
 ollama pull llama3.2:3b-q4  # 4-bit quantization
 
-# Or smaller models
-ollama pull llama3.2:1b
+# Routing cannot go below the e4b minimum -- quantize rather than downsize
+ollama pull gemma4:e4b
 ```
 
 ## Cost Comparison
@@ -392,8 +403,8 @@ Use WaddleAI routing:
 
 | Use Case | Model | Size | Quality |
 |----------|-------|------|---------|
-| Routing | llama3.2:1b | 1GB | Fast |
-| Chat | llama3.2:3b | 2GB | Good |
+| Routing / quick / light | gemma4:e4b | ~4GB | Fast — supported minimum |
+| Chat (general) | gemma4:12b | ~8GB | Recommended where the host allows |
 | Code | codellama | 4GB | Excellent |
 | Analysis | mixtral | 26GB | Excellent |
 | Embeddings | nomic-embed-text | 274MB | Good |
@@ -401,8 +412,8 @@ Use WaddleAI routing:
 ### By Hardware
 
 **4GB RAM, No GPU**:
-- llama3.2:1b
-- llama3.2:3b (slow)
+- gemma4:e4b (routing; tight)
+- llama3.2:3b (general use only, slow)
 
 **8GB RAM, No GPU**:
 - llama3.2:3b

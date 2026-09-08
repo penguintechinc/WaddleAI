@@ -144,7 +144,13 @@ def test_downgrade_drops_model_access_policies_table(scratch_db) -> None:
 
 
 def test_alembic_chain_still_single_head_after_018() -> None:
-    """Adding 018 keeps a single resolvable head, no divergent branches."""
+    """Adding 018 keeps a single resolvable head, no divergent branches.
+
+    Asserts the invariant (one head, 018 on the chain) rather than pinning the
+    head's name -- every later migration would otherwise fail this test for no
+    reason. The head's identity is asserted by whichever test owns it, today
+    ``test_migration_019.py``.
+    """
     from alembic.script import ScriptDirectory
 
     cfg = _alembic_config("sqlite://")
@@ -152,4 +158,4 @@ def test_alembic_chain_still_single_head_after_018() -> None:
     heads = script.get_heads()
 
     assert len(heads) == 1
-    assert heads[0] == "018_model_access_policies"
+    assert "018_model_access_policies" in {r.revision for r in script.walk_revisions()}

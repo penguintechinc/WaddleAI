@@ -27,8 +27,13 @@ from shared.memory.token_len_cache import TokenLenCache
 logger = logging.getLogger(__name__)
 
 # §7.1 seam default: Gemma 4 (Apache-2.0). gemma4:2b is not a pullable tag --
-# only e2b/e4b/12b/26b/31b exist; e2b is the cheapest.
-DEFAULT_SUMMARIZE_MODEL = "gemma4:e2b"
+# only e2b/e4b/12b/26b/31b exist (the "e" prefix marks the MatFormer
+# effective-size variants, so the 12B tag is "12b", not "e12b"). e2b is the
+# cheapest but does NOT hold up in testing (2026-09-07), so e4b is the floor.
+# Summarization is a quick/light role, which is exactly where e4b is the
+# recommendation; general-purpose local generation should reach for 12b
+# wherever the host can carry it.
+DEFAULT_SUMMARIZE_MODEL = "gemma4:e4b"
 
 _SUMMARIZE_SYSTEM_PROMPT = (
     "Summarize the following conversation turns concisely, preserving key "
