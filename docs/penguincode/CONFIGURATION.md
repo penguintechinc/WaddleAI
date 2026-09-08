@@ -53,25 +53,25 @@ export OLLAMA_API_URL="http://ollama:11434"
 ```yaml
 models:
   planning: "deepseek-coder:6.7b"
-  orchestration: "gemma4:e4b"
+  orchestration: "gemma4:12b"
   research: "gemma4:e4b"
   execution: "qwen2.5-coder:7b"
   execution_lite: "qwen2.5-coder:7b"
-  exploration: "gemma4:e4b"
-  exploration_lite: "gemma4:e4b"
+  exploration: "gemma4:12b"
+  exploration_lite: "gemma4:12b"
 ```
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `planning` | `deepseek-coder:6.7b` | Implementation planning, task decomposition. |
-| `orchestration` | `gemma4:e4b` | ChatAgent orchestration, routing decisions. |
+| `orchestration` | `gemma4:12b` | ChatAgent orchestration, routing decisions. Coding role. |
 | `research` | `gemma4:e4b` | Web research, summarization tasks. |
 | `execution` | `qwen2.5-coder:7b` | Complex code generation (refactoring, multi-file, features). |
 | `execution_lite` | `qwen2.5-coder:7b` | Simple code edits (single file). Use `qwen2.5-coder:1.5b` for lower VRAM. |
-| `exploration` | `gemma4:e4b` | Standard codebase exploration, file reading. |
-| `exploration_lite` | `gemma4:e4b` | Quick file reads. `gemma4:e4b` is the supported floor -- no lower-VRAM option below it. |
+| `exploration` | `gemma4:12b` | Standard codebase exploration, file reading. Coding role. |
+| `exploration_lite` | `gemma4:12b` | Quick file reads -- still a coding role, so it follows the coding default rather than the `e4b` floor. |
 
-`gemma4:e4b` is the shipped default for every role above; `gemma4:12b` is recommended instead for more complex operations like coding, wherever the host can carry it (~8GB VRAM).
+**`gemma4:12b` is the default for every CODING role** (orchestration, exploration, explorer, foreman) -- `gemma4:e4b` tested poorly at coding on 2026-09-08. `gemma4:e4b` remains the default for routing and general/non-code roles (research, tester), where it performs fine. `12b` needs ~8GB VRAM.
 
 ### Per-Agent Model Overrides
 
@@ -81,7 +81,7 @@ agents:
     model: "qwen2.5-coder:7b"
     description: "Code mutations, file writes, bash execution"
   explorer:
-    model: "gemma4:e4b"
+    model: "gemma4:12b"
     description: "Codebase navigation, file reading, search"
   reviewer:
     model: "codellama:7b"
@@ -109,14 +109,14 @@ agents:
 | Agent | Purpose | Recommended Models |
 |-------|---------|-------------------|
 | `executor` | Code mutations, file writes | `qwen2.5-coder:7b`, `codellama:7b` |
-| `explorer` | Codebase navigation | `gemma4:e4b`, `gemma4:12b` |
+| `explorer` | Codebase navigation | `gemma4:12b` (coding role) |
 | `reviewer` | Code review | `codellama:7b`, `deepseek-coder:6.7b` |
 | `planner` | Task decomposition | `deepseek-coder:6.7b` |
 | `tester` | Test generation | `qwen2.5-coder:7b` |
 | `refactor` | Refactoring | `codellama:7b` |
 | `debugger` | Error analysis | `deepseek-coder:6.7b` |
 | `docs` | Documentation | `mistral:7b` |
-| `researcher` | Web research | `gemma4:e4b`, `gemma4:12b` |
+| `researcher` | Web research | `gemma4:e4b` (not a coding role) |
 
 ---
 
@@ -643,11 +643,11 @@ services:
 | Variable | Default | Config Equivalent | Description |
 |----------|---------|-------------------|-------------|
 | `PENGUINCODE_MODEL_PLANNING` | `deepseek-coder:6.7b` | `models.planning` | Planning model. |
-| `PENGUINCODE_MODEL_ORCHESTRATION` | `gemma4:e4b` | `models.orchestration` | Orchestration model. |
+| `PENGUINCODE_MODEL_ORCHESTRATION` | `gemma4:12b` | `models.orchestration` | Orchestration model. |
 | `PENGUINCODE_MODEL_EXECUTION` | `qwen2.5-coder:7b` | `models.execution` | Execution model. |
 | `PENGUINCODE_MODEL_EXECUTION_LITE` | `qwen2.5-coder:7b` | `models.execution_lite` | Lite execution model. |
-| `PENGUINCODE_MODEL_EXPLORATION` | `gemma4:e4b` | `models.exploration` | Exploration model. |
-| `PENGUINCODE_MODEL_EXPLORATION_LITE` | `gemma4:e4b` | `models.exploration_lite` | Lite exploration model. |
+| `PENGUINCODE_MODEL_EXPLORATION` | `gemma4:12b` | `models.exploration` | Exploration model. |
+| `PENGUINCODE_MODEL_EXPLORATION_LITE` | `gemma4:12b` | `models.exploration_lite` | Lite exploration model. |
 | `PENGUINCODE_MODEL_RESEARCH` | `gemma4:e4b` | `models.research` | Research model. |
 
 #### Per-Agent Model Overrides
@@ -655,7 +655,7 @@ services:
 | Variable | Default | Config Equivalent | Description |
 |----------|---------|-------------------|-------------|
 | `PENGUINCODE_AGENT_EXECUTOR` | `qwen2.5-coder:7b` | `agents.executor.model` | Executor agent model. |
-| `PENGUINCODE_AGENT_EXPLORER` | `gemma4:e4b` | `agents.explorer.model` | Explorer agent model. |
+| `PENGUINCODE_AGENT_EXPLORER` | `gemma4:12b` | `agents.explorer.model` | Explorer agent model. |
 | `PENGUINCODE_AGENT_REVIEWER` | `codellama:7b` | `agents.reviewer.model` | Reviewer agent model. |
 | `PENGUINCODE_AGENT_PLANNER` | `deepseek-coder:6.7b` | `agents.planner.model` | Planner agent model. |
 | `PENGUINCODE_AGENT_TESTER` | `qwen2.5-coder:7b` | `agents.tester.model` | Tester agent model. |
@@ -844,7 +844,7 @@ ollama:
 
 models:
   planning: "deepseek-coder:6.7b"
-  orchestration: "gemma4:e4b"
+  orchestration: "gemma4:12b"
   execution: "qwen2.5-coder:7b"
 
 defaults:
@@ -870,7 +870,7 @@ ollama:
 
 models:
   planning: "deepseek-coder:6.7b"
-  orchestration: "gemma4:e4b"
+  orchestration: "gemma4:12b"
   execution: "qwen2.5-coder:7b"
 
 security:

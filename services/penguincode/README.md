@@ -56,7 +56,8 @@
 curl -fsSL https://ollama.ai/install.sh | sh
 
 # Pull required models
-ollama pull gemma4:e4b          # default for orchestration/exploration/research
+ollama pull gemma4:12b          # coding roles: orchestration, exploration
+ollama pull gemma4:e4b          # research and other non-code roles
 ollama pull nomic-embed-text
 
 # Optional: recommended for complex ops like coding, if your host has ~8GB VRAM
