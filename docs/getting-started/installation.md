@@ -142,10 +142,22 @@ aggregate throughput *falls* to 1.34×, so the third request does not merely wai
 its turn, it makes the other two slower than the work it contributes. Beyond the
 ceiling you lose latency and throughput together.
 
-**Rule of thumb: two concurrently generating LLMs per xx80-class GPU, three on
-an xx90.** Embedding models do not count against this — they are small, their
-work is a single forward pass rather than sequential token generation, and
-`nomic-embed-text` at 0.32 GB does not contend meaningfully.
+**Rule of thumb — concurrently generating LLMs per GPU:**
+
+| GPU class | Concurrent LLMs |
+|---|---|
+| xx70 and below | 1 |
+| xx80 | 2 |
+| xx90 | 3 |
+
+The xx80 row is measured (above). The xx70 and xx90 rows follow the tier
+pattern and have not been measured here — treat them as starting points and
+check with the aggregate-throughput method above if it matters for your
+deployment: if total work falls when you add a stream, you are past the ceiling.
+
+Embedding models do not count against this. Their work is a single forward pass
+rather than sequential token generation, and `nomic-embed-text` at 0.32 GB does
+not contend meaningfully.
 
 Size the two limits separately:
 
