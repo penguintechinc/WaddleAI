@@ -151,6 +151,64 @@ capture, in addition to the chosen model:
 Recording only the decision makes a bad route unreproducible. Recording the
 inputs makes it explicable.
 
+### OpenTelemetry emission
+
+Every routing decision emits **three signals**, split by what each is good at.
+The split is not stylistic — putting the wrong field in the wrong signal breaks
+the backend.
+
+**Span** (`waddleai.routing.decide`) — one per decision, on the existing tracer
+in `shared/observability/tracing.py`. Carries the full picture as attributes:
+
+| Attribute | Example |
+|---|---|
+| `waddleai.route.model` | `gemma4:12b-it-qat` |
+| `waddleai.route.provider` | `ollama` |
+| `waddleai.route.tool_type` | `code-gen` |
+| `waddleai.route.complexity` | `4` |
+| `waddleai.route.source` | `weighted` \| `explicit` \| `caller_header` |
+| `waddleai.route.candidates` | `["gemma4:12b-it-qat", "claude-sonnet"]` |
+| `waddleai.route.weights` | the profile the router was shown |
+| `waddleai.route.reason` | the router's stated reason, free text |
+| `waddleai.route.narrowed_by` | `tenant_disabled` \| `not_installed` \| `none` |
+
+**Metric** — counters and a histogram, for aggregation and alerting:
+
+- `waddleai.routing.decisions` (counter) — labels: `model`, `tool_type`,
+  `source`, `outcome`
+- `waddleai.routing.duration` (histogram) — how long the decision took,
+  including any classifier call
+- `waddleai.routing.degraded` (counter) — labels: `cause`
+  (`classifier_empty`, `classifier_error`, `no_candidates`,
+  `model_unavailable`). **This is the counter that would have made bugs 7 and 8
+  visible on day one** rather than surfacing as "the router returns a constant".
+
+**Log** — one structured record per decision, carrying the high-cardinality
+detail a metric cannot hold: `request_id`, the reason text, the full weight set.
+
+**The cardinality rule is load-bearing.** The router's free-text reason must
+**never** be a metric label — it is unbounded, and one such label will blow up
+any metrics backend. Reason text belongs in the span and the log. Metric labels
+stay to a bounded set: model name, tool type, source, outcome, degradation
+cause.
+
+**PII:** identifiers in telemetry are UUIDs only, never email or username, per
+the PII-tokenisation rule. `org_id` is acceptable as a span attribute and a log
+field; it is **not** a metric label — tenant count is unbounded and would
+multiply every series.
+
+**Open question for implementation, not settled here:** metrics today are
+`prometheus_client` (`shared/utils/metrics.py`), while tracing is OTel. Emitting
+OTel metrics means either running two metric stacks or bridging one to the
+other (OTel ships a Prometheus exporter). Pick deliberately; do not let a second
+stack appear by accident.
+
+**Relationship to `routing_decision_traces`.** The DB table stays the durable,
+queryable corpus — it is what an operator greps months later and what the
+aggregate WebUI reads. OTel is the operational path: live dashboards, alerting,
+and correlation with the surrounding request span. They carry overlapping
+content on purpose and answer different questions.
+
 ## Amendment to the tool-type vocabulary design
 
 That document argues for a closed, kebab-case `tool_type` vocabulary **because
@@ -193,6 +251,13 @@ requirement relaxes to a preference for request traffic.
 - **Trace completeness** — every decision records candidates, weights, classifier
   output and reason. Asserting only that a model was chosen would let the
   debugging story rot silently.
+- **Telemetry emission** — a decision emits its span, metric and log, and the
+  degradation counter increments on a degraded route. That counter is the
+  regression test for bugs 7 and 8: both were silent precisely because nothing
+  counted a fallback to the safe default.
+- **Metric cardinality** — assert the reason text is NOT among the metric
+  labels. Easy to add later "just for debugging" and expensive to discover in
+  production.
 - **Determinism via narrowing** — with one candidate enabled, N runs of the same
   request all select it.
 - **Distribution, not equality** — with several candidates, routing tests assert
