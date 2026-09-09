@@ -317,7 +317,7 @@ class TestEndToEndAllowAndBlock:
         assert result.blocked is False
         assert connector.call_count == 1
         assert _SSN not in result.messages[0]["content"]
-        assert "[REDACTED]" in result.messages[0]["content"]
+        assert "[REDACTED:" in result.messages[0]["content"]
 
 
 class TestPerOrgResolutionDrivesRealOutcomes:

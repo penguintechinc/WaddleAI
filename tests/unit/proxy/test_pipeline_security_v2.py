@@ -64,7 +64,8 @@ class _StubCF:
             return "allow", text
         redacted = text
         for v in violations:
-            redacted = redacted.replace(v.full_matched_text, "[REDACTED]")
+            # Mirror production: real redaction names the PII type.
+            redacted = redacted.replace(v.full_matched_text, f"[REDACTED:{v.rule_name.upper()}]")
         return "redact", redacted
 
 
@@ -167,7 +168,7 @@ class TestSecurityInStageV2Wiring:
 
         assert "tier1" in cf.calls
         real_content_filter.filter_input.assert_not_awaited()  # v1 path never ran
-        assert "[REDACTED]" in result.messages[0]["content"]
+        assert "[REDACTED:" in result.messages[0]["content"]
 
 
 class TestSecurityInStageBypass:
@@ -332,7 +333,7 @@ class TestSecurityOutStageV2Wiring:
         result = await stage(ctx)
 
         real_content_filter.filter_output.assert_not_awaited()
-        assert "[REDACTED]" in result.response_text
+        assert "[REDACTED:" in result.response_text
 
     @pytest.mark.asyncio
     async def test_flag_off_uses_v1_path_even_with_guardrails_wired(self) -> None:
@@ -442,7 +443,7 @@ class TestDispatchStageUpstreamFilter:
         class _StubUpstreamFilter:
             async def apply(self, text, resolved, destination_kind, ctx=None):
                 calls.append(destination_kind)
-                redacted = text.replace("123-45-6789", "[REDACTED]")
+                redacted = text.replace("123-45-6789", "[REDACTED:SSN]")
                 return SimpleNamespace(text=redacted, mapping_id=None, counts={})
 
             async def depseudonymize(self, text, mapping_id):
@@ -471,7 +472,7 @@ class TestDispatchStageUpstreamFilter:
         result = await stage(ctx)
 
         assert calls == ["commercial"]
-        assert "[REDACTED]" in result.messages[0]["content"]
+        assert "[REDACTED:" in result.messages[0]["content"]
 
     @pytest.mark.asyncio
     async def test_upstream_filter_skipped_when_flag_off(self) -> None:

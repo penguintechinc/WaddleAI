@@ -18,6 +18,7 @@ import aiohttp
 from prometheus_client import Counter
 
 from shared.licensing.gate_cache import LicenseGateCacheEntry
+from shared.observability.metrics import pii_detected_counter
 
 # NER filter — optional; graceful degradation if presidio/transformers unavailable.
 # Names are pre-declared with their fallback-compatible types so the `except`
@@ -490,7 +491,7 @@ class ContentFilter:
                 violations.extend(await self._run_ner_patterns(text, phase, org_id))
 
             # Determine action based on violations
-            action, filtered_text = self._determine_action(text, violations)
+            action, filtered_text = self._determine_action(text, violations, phase)
             auditor_used = False
 
             # Phase 3: Invoke LLM auditor for uncertain cases
@@ -1118,12 +1119,15 @@ class ContentFilter:
         self,
         text: str,
         violations: list[FilterViolation],
+        phase: str = "input",
     ) -> tuple[str, str]:
         """Determine filtering action and apply transformations.
 
         Args:
             text: Original text
             violations: Detected violations
+            phase: "input" or "output" -- recorded on the PII telemetry so an
+                operator can distinguish prompt-side from response-side finds
 
         Returns:
             Tuple of (action, filtered_text)
@@ -1135,16 +1139,56 @@ class ContentFilter:
         # Check for any block-level violations
         block_violations = [v for v in violations if v.action == "block"]
         if block_violations:
+            self._emit_pii_detected(block_violations, phase, "block")
             return "block", text
 
         # Check for redact violations
         redact_violations = [v for v in violations if v.action == "redact"]
         if redact_violations:
+            self._emit_pii_detected(redact_violations, phase, "redact")
             filtered_text = self._apply_redactions(text, redact_violations)
             return "redact", filtered_text
 
         # Remaining violations are log-only
+        self._emit_pii_detected(violations, phase, "log")
         return "log", text
+
+    def _emit_pii_detected(
+        self,
+        violations: list[FilterViolation],
+        phase: str,
+        action: str,
+    ) -> None:
+        """Record that PII was found, by type -- as a metric and a log line.
+
+        Counts one per violation so a request containing three emails reports
+        three, not one: the interesting operational question is how much PII is
+        flowing, not merely whether any did.
+
+        The matched TEXT is never emitted. It is unbounded as a label and it is
+        the very data being protected -- a telemetry pipeline is exactly where
+        PII should not be re-introduced. Type, phase and action are all bounded.
+
+        Never raises: a telemetry failure must not change a filtering decision.
+        """
+        try:
+            counter = pii_detected_counter()
+            by_type: dict[str, int] = {}
+            for v in violations:
+                by_type[v.rule_name] = by_type.get(v.rule_name, 0) + 1
+            for pii_type, count in by_type.items():
+                counter.add(
+                    count,
+                    {"pii_type": pii_type, "phase": phase, "action": action},
+                )
+            logger.info(
+                "PII detected: phase=%s action=%s counts=%s",
+                phase,
+                action,
+                by_type,
+            )
+        except Exception as e:  # pragma: no cover - telemetry must never gate filtering
+            logger.warning(f"PII telemetry emission failed: {e}")
 
     def _apply_redactions(
         self,
@@ -1173,11 +1217,18 @@ class ContentFilter:
                 if violation.full_matched_text
                 else violation.matched_text
             )
+            # Name the KIND of thing removed, e.g. [REDACTED:EMAIL]. A bare
+            # [REDACTED] destroys the sentence's meaning for the downstream
+            # model -- "email [REDACTED] about the invoice" could have hidden a
+            # person, an address or a date. The type restores that without
+            # restoring the value, and it matches what the pseudonymize path
+            # already does ([PSEUDO_EMAIL_1]).
+            placeholder = f"[REDACTED:{violation.rule_name.upper()}]"
             # Escape special regex characters and replace
             pattern = re.escape(redact_text)
             redacted = re.sub(
                 pattern,
-                "[REDACTED]",
+                placeholder,
                 redacted,
                 flags=re.IGNORECASE,
             )
