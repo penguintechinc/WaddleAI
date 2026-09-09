@@ -177,22 +177,53 @@ retention. Safety and debuggability are not the upsell.
 
 ## Testing
 
-- **Envelope conformance** — every decision point emits all required fields. A
-  point that emits nothing is the failure this design exists to prevent, so the
-  test enumerates decision points rather than asserting per-site.
-- **`degraded` correctness** — force each known degradation path (unreachable
-  classifier, empty model response, no candidates, guard timeout) and assert the
-  flag is set. This is the direct regression test for bugs 7 and 8.
-- **Cardinality guard** — assert `reason`, `request_id` and `org_id` are absent
-  from metric labels.
-- **Tree completeness** — one request produces one connected span tree with no
-  orphans.
-- **PII absence** — no raw prompt text or user identifier in any emitted signal.
-- **Timing provenance** — upstream durations come from the provider's reported
-  values, not a wrapper stopwatch. A test asserts the emitted
-  `eval_duration` matches the upstream response field rather than elapsed wall
-  time, since the two silently diverge and the wrapper version quietly folds in
-  network and our own overhead.
+**Every test below must capture real emissions, not inspect definitions.** A
+test that imports the metrics module and asserts an instrument exists proves
+only that someone declared it — the failure mode this whole design exists to
+prevent is a signal that is declared and never emitted. Assert on values that
+changed as a result of exercising the code.
+
+The mechanism is available in the pinned SDK (verified against
+opentelemetry-sdk 1.44.0):
+
+- `opentelemetry.sdk.metrics.export.InMemoryMetricReader` attached to a test
+  `MeterProvider` — read back the actual data points and their attributes
+- `opentelemetry.sdk.trace.export.in_memory_span_exporter.InMemorySpanExporter`
+  — read back the actual spans and their parent links
+- `caplog` for the structured log record
+
+### Required tests
+
+- **Emission, per decision point.** Exercise each decision point and assert a
+  metric data point and a span actually appear in the in-memory readers. The
+  test **enumerates the decision points** from a single registry rather than
+  being written per site, so adding a decision point without telemetry fails the
+  suite instead of passing silently.
+- **Emission is load-bearing.** For at least one decision point, remove the
+  emission and confirm the test fails. A telemetry test that passes with the
+  emission deleted is worthless, and that is not hypothetical — three bugs this
+  session were masked by tests that could not fail.
+- **`degraded` correctness.** Force each known degradation path — unreachable
+  classifier, empty model response (the bug 8 shape), no candidates, guard
+  timeout — and assert `degraded=true` reaches the counter. Direct regression
+  test for bugs 7 and 8.
+- **Counter arithmetic.** N requests produce N data points. Off-by-one and
+  double-counting are invisible in a presence check.
+- **Cardinality guard.** Assert `reason`, `request_id` and `org_id` are absent
+  from the attribute set of every emitted metric point. Not from the *declared*
+  labels — from what was actually recorded.
+- **Timing provenance.** Assert the emitted `eval_duration` equals the value in
+  the upstream response, not elapsed wall time. Feed a stub whose reported
+  duration differs deliberately from real elapsed time; a stopwatch
+  implementation passes a naive test and fails this one.
+- **Timing completeness.** A provider reporting no breakdown emits
+  `total_duration` only, with the other histograms untouched rather than filled
+  with a fabricated split.
+- **Tree completeness.** One request produces one connected span tree with no
+  orphans — assert every decision span has the request span as an ancestor.
+- **PII absence.** No raw prompt text and no user identifier in any emitted
+  signal. Feed a request containing a distinctive marker string and assert it
+  appears in none of the captured spans, metrics or logs.
 
 ## Out of scope
 
