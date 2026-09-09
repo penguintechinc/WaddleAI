@@ -83,11 +83,55 @@ downstream work ran on a bad input.
 Same three-way split as the routing design, for the same reasons:
 
 - **Span** per decision, nested — carries the full envelope including `reason`
-- **Metric** — `waddleai.decisions` (counter) and `waddleai.decision.duration`
-  (histogram), labelled by `decision_point`, `source`, `degraded`, `outcome`.
-  Bounded label set only.
+- **Metric** — `waddleai.decisions` (counter) and the timing histograms below,
+  labelled by `decision_point`, `source`, `degraded`, `outcome`. Bounded label
+  set only.
 - **Log** — one structured record per decision carrying the high-cardinality
   detail
+
+### Timing
+
+One duration per decision is not enough to answer "why was this slow". Time is
+spent in distinct phases with different causes and different fixes, so each gets
+its own histogram:
+
+| Metric | Measures | A spike means |
+|---|---|---|
+| `waddleai.decision.duration` | Time inside the decision itself | The decision logic or its model call is slow |
+| `waddleai.model.load_duration` | Cold-loading a model into VRAM | **Eviction thrashing** — see below |
+| `waddleai.upstream.prompt_eval_duration` | Upstream processing the prompt | Long contexts, or a compute-bound GPU |
+| `waddleai.upstream.eval_duration` | Upstream generating tokens | Bandwidth-bound; scales with model size |
+| `waddleai.upstream.total_duration` | Whole upstream call | The caller-visible cost |
+| `waddleai.request.duration` | End to end through the pipeline | The number a user actually feels |
+
+Paired counters `waddleai.upstream.prompt_tokens` and
+`.completion_tokens` make tokens/sec derivable per model without a second
+instrument.
+
+**These are not stopwatch measurements.** Ollama returns `load_duration`,
+`prompt_eval_duration`, `eval_duration` and `total_duration` on every response;
+emit those rather than timing the call from outside. Wrapping a timer around the
+HTTP call measures the network and our own overhead too, and cannot separate
+load from prompt from generation at all. Where a provider does not report a
+breakdown, emit `total_duration` only and leave the rest unrecorded rather than
+inventing a split.
+
+**`model.load_duration` is the metric that makes eviction visible.** A model
+being evicted and reloaded costs roughly five seconds before a single token is
+produced (measured, 2026-09-08). Without this histogram, thrashing caused by
+`OLLAMA_MAX_LOADED_MODELS` looks indistinguishable from "the model is slow" —
+the request is late, nothing errors, and every other metric looks normal. With
+it, a non-zero load time on a steady-state deployment is an immediate signal
+that models are being swapped.
+
+Label these by `model` and `provider`, both bounded. **Not** by `org_id` — the
+same unbounded-cardinality rule applies.
+
+Splitting prompt from generation also makes the capacity-versus-throughput
+distinction observable in production rather than only on a bench: prompt
+evaluation is compute-bound and largely size-independent, generation is
+bandwidth-bound and scales with model size. Watching them move separately tells
+an operator which resource they have actually run out of.
 
 **`waddleai.decisions{degraded="true"}` is the single most valuable series this
 design produces.** Alert on it and every silent-degradation bug in this
@@ -144,6 +188,11 @@ retention. Safety and debuggability are not the upsell.
 - **Tree completeness** — one request produces one connected span tree with no
   orphans.
 - **PII absence** — no raw prompt text or user identifier in any emitted signal.
+- **Timing provenance** — upstream durations come from the provider's reported
+  values, not a wrapper stopwatch. A test asserts the emitted
+  `eval_duration` matches the upstream response field rather than elapsed wall
+  time, since the two silently diverge and the wrapper version quietly folds in
+  network and our own overhead.
 
 ## Out of scope
 
