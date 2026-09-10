@@ -741,6 +741,42 @@ class TestOllamaConnector:
             assert result["provider"] == "ollama"
 
 
+class TestOllamaConnectorLazySession:
+    """OllamaConnector.__init__ must not open its HTTP session eagerly.
+
+    # regression: gh-131
+    """
+
+    def test_construct_outside_running_loop_does_not_raise(self):
+        """Constructing from sync code (no running event loop) must succeed.
+
+        Pre-fix, __init__ called aiohttp.ClientSession() eagerly. Modern
+        aiohttp requires a running event loop at construction time
+        (asyncio.get_running_loop()), so any caller constructing
+        OllamaConnector(...) outside `async def` execution hit
+        `RuntimeError: no running event loop`. This is a plain sync test
+        function -- no @pytest.mark.asyncio, no running loop -- reproducing
+        exactly that caller shape.
+        """
+        config = {"endpoint_url": "http://localhost:11434", "api_key": "", "model_list": ["llama2"]}
+        connector = OllamaConnector("test-ollama", config)  # must not raise
+        assert connector._session is None
+
+    @pytest.mark.asyncio
+    async def test_session_created_lazily_on_first_use(self):
+        """The HTTP session is created on first access, inside a running loop, not before."""
+        config = {"endpoint_url": "http://localhost:11434", "api_key": "", "model_list": ["llama2"]}
+        connector = OllamaConnector("test-ollama", config)
+        assert connector._session is None
+
+        session = connector.session
+
+        assert connector._session is session
+        assert not session.closed
+
+        await connector.close()
+
+
 class TestLLMManager:
     """Test LLMManager (LLMConnectionManager) class."""
 
@@ -1156,6 +1192,44 @@ class TestLlamaCppConnector:
 
         assert result["status"] == "unhealthy"
         assert "connection refused" in result["error"]
+
+    def test_get_session_reuses_injected_mock_with_truthy_closed(self, connector):
+        """_get_session() must not discard an injected mock via truthiness.
+
+        A test double's `.closed` attribute is itself a Mock() unless
+        explicitly set to a bool, and Mock() is truthy. A plain
+        `if self._session.closed:` check (the pre-fix code) would treat
+        that truthy Mock as "yes, closed" and silently open a brand-new
+        real aiohttp.ClientSession(), discarding the injected double --
+        turning a unit test into a real outbound HTTP call. This is the
+        exact hazard OllamaConnector.session's docstring describes;
+        _get_session() must use the same `is True` check so an
+        un-configured Mock `.closed` is never mistaken for a real close.
+        """
+        injected = MagicMock()
+        # Deliberately NOT setting `.closed` to a real bool -- accessing it
+        # auto-creates a child Mock(), which is truthy but `is not True`.
+        connector._session = injected
+
+        session = connector._get_session()
+
+        assert session is injected
+
+    @pytest.mark.asyncio
+    async def test_close_closes_injected_mock_with_truthy_closed(self, connector):
+        """close() must not skip an injected mock via truthiness.
+
+        Mirrors the _get_session() hazard above on the teardown path: the
+        pre-fix `if self._session and not self._session.closed:` reduces to
+        `not <truthy Mock>`, which is always False, so close() would never
+        call .close() on an injected double.
+        """
+        injected = AsyncMock()
+        connector._session = injected
+
+        await connector.close()
+
+        injected.close.assert_awaited_once()
 
 
 class TestBedrockConnector:

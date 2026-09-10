@@ -1603,7 +1603,15 @@ class LlamaCppConnector(LLMConnector):
             self._headers["Authorization"] = f"Bearer {config['api_key']}"
 
     def _get_session(self) -> aiohttp.ClientSession:
-        if self._session is None or self._session.closed:
+        """The HTTP session, opened on first use.
+
+        The closed check is `is True` rather than truthiness on purpose: an
+        injected test double's `.closed` is itself a Mock, which is truthy,
+        so a truthiness check would silently discard the injected session
+        and open a real one -- turning a unit test into an outbound HTTP
+        call. See OllamaConnector.session for the identical hazard.
+        """
+        if self._session is None or getattr(self._session, "closed", False) is True:
             self._session = aiohttp.ClientSession(headers=self._headers)
         return self._session
 
@@ -1808,8 +1816,13 @@ class LlamaCppConnector(LLMConnector):
             }
 
     async def close(self):
-        """Close the underlying aiohttp session, if one was opened."""
-        if self._session and not self._session.closed:
+        """Close the underlying aiohttp session, if one was opened.
+
+        The closed check is `is not True` for the same reason `_get_session`
+        uses `is True` -- an injected double's `.closed` is a truthy Mock,
+        and plain truthiness would skip closing it.
+        """
+        if self._session is not None and getattr(self._session, "closed", False) is not True:
             await self._session.close()
 
 

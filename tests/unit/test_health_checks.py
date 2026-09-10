@@ -241,6 +241,37 @@ class TestDatabaseHealthChecker:
         assert result.status == HealthStatus.HEALTHY
         assert result.details["connection_pool_size"] == "unknown"
 
+    @pytest.mark.asyncio
+    async def test_database_healthy_real_penguin_dal(self):
+        """A real penguin_dal DB (not a bare Mock) reports HEALTHY.
+
+        # regression: gh-130
+
+        The Mock-based tests above answer any attribute access -- including
+        one that doesn't exist on the real object -- so they cannot catch
+        either of gh-130's two actual faults against a real penguin_dal DB:
+        `db.executesql("SELECT 1")` not being implemented by an older
+        penguin_dal, and the old `getattr(self.db._adapter, "pool_size",
+        "unknown")`, which evaluates `self.db._adapter` *before* getattr's
+        default can help -- real penguin_dal DB objects have no `_adapter`
+        attribute at all, so that raised AttributeError, was swallowed by
+        the bare `except Exception` in HealthChecker.check(), and /readyz
+        reported UNHEALTHY (503) against a healthy database. This test
+        exercises the real penguin_dal API surface end to end instead of a
+        Mock that would happily answer either legacy call.
+        """
+        from penguin_dal import DB
+
+        real_db = DB("sqlite://")
+        checker = DatabaseHealthChecker("db", real_db)
+        result = await checker.check()
+
+        assert result.status == HealthStatus.HEALTHY
+        assert result.message == "Database connection healthy"
+        # Real penguin_dal DB objects have no `_adapter` -- "unknown" is the
+        # correct, honest answer, not a crash.
+        assert result.details["connection_pool_size"] == "unknown"
+
 
 # Tests for RedisHealthChecker
 class TestRedisHealthChecker:

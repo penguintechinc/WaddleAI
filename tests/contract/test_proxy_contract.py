@@ -129,7 +129,11 @@ def _messages_auth_headers(base):
 
 
 def test_messages(proxy_url):
-    """POST /v1/messages with a valid Bearer JWT + x-api-key returns 200."""
+    """POST /v1/messages with a valid Bearer JWT + x-api-key returns 200.
+
+    # regression: gh-130 -- API-key auth (shared/auth/rbac.py) 500'd/401'd
+    # on the update_record() penguin_dal incompatibility.
+    """
     r = httpx.post(
         f"{proxy_url}/v1/messages",
         headers=_messages_auth_headers(proxy_url),
@@ -385,7 +389,10 @@ def test_mem0_memories_post_cross_user_denied(proxy_url):
 
 
 def test_chat_completions_auth_bearer_jwt(proxy_url):
-    """Bearer JWT auth (regression) — existing path unchanged."""
+    """Bearer JWT auth (regression) — existing path unchanged.
+
+    # regression: gh-130
+    """
     r = httpx.post(
         f"{proxy_url}/v1/chat/completions",
         headers=_bearer_headers(proxy_url),
@@ -395,7 +402,12 @@ def test_chat_completions_auth_bearer_jwt(proxy_url):
 
 
 def test_chat_completions_auth_xapikey_alone(proxy_url):
-    """x-api-key header alone (no Authorization) — new via middleware."""
+    """x-api-key header alone (no Authorization) — new via middleware.
+
+    # regression: gh-130 -- authenticate_api_key()'s update_record() call
+    # (shared/auth/rbac.py) raised AttributeError on every otherwise-valid
+    # wa- key, surfaced upstream as a generic 401.
+    """
     _, api_key = _auth(proxy_url)
     r = httpx.post(
         f"{proxy_url}/v1/chat/completions",
@@ -406,7 +418,10 @@ def test_chat_completions_auth_xapikey_alone(proxy_url):
 
 
 def test_chat_completions_auth_raw_wa_key(proxy_url):
-    """Authorization: <wa-key> (raw, no Bearer prefix) — new via middleware."""
+    """Authorization: <wa-key> (raw, no Bearer prefix) — new via middleware.
+
+    # regression: gh-130
+    """
     _, api_key = _auth(proxy_url)
     r = httpx.post(
         f"{proxy_url}/v1/chat/completions",
@@ -417,7 +432,10 @@ def test_chat_completions_auth_raw_wa_key(proxy_url):
 
 
 def test_chat_completions_auth_bearer_wa_key(proxy_url):
-    """Authorization: Bearer <wa-key> (key in bearer slot) — new via middleware."""
+    """Authorization: Bearer <wa-key> (key in bearer slot) — new via middleware.
+
+    # regression: gh-130
+    """
     _, api_key = _auth(proxy_url)
     r = httpx.post(
         f"{proxy_url}/v1/chat/completions",
@@ -438,7 +456,10 @@ def test_chat_completions_auth_bad_key(proxy_url):
 
 
 def test_messages_auth_xapikey_alone(proxy_url):
-    """Claude Messages: x-api-key alone (no Bearer JWT) — was broken, now fixed."""
+    """Claude Messages: x-api-key alone (no Bearer JWT) — was broken, now fixed.
+
+    # regression: gh-130
+    """
     _, api_key = _auth(proxy_url)
     r = httpx.post(
         f"{proxy_url}/v1/messages",
