@@ -416,7 +416,7 @@ class TestStageImplementations:
             async def __call__(self, ctx: PipelineContext) -> PipelineContext:
                 # Simulate output filtering
                 if "SSN:" in ctx.response_text:
-                    ctx.response_text = "[REDACTED]"
+                    ctx.response_text = "[REDACTED:SSN]"  # match production's typed placeholder
                 ctx.stage_log.append("ran:security_out")
                 return ctx
 
@@ -427,7 +427,7 @@ class TestStageImplementations:
             response_text="The user's SSN: 123-45-6789",
         )
         result = await stage(ctx)
-        assert "[REDACTED]" in result.response_text
+        assert "[REDACTED:" in result.response_text
 
     async def test_dispatch_stage_calls_provider(self):
         """DispatchStage should route to provider and capture usage."""

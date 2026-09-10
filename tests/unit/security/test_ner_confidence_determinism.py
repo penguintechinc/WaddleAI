@@ -423,7 +423,7 @@ class TestNERGenuineDetectionParity:
         result = await cf.filter_input(_STRONG_PERSON_TEXT)
         assert result.action == "redact"
         assert _STRONG_PERSON_NAME not in result.filtered_text
-        assert "[REDACTED]" in result.filtered_text
+        assert "[REDACTED:" in result.filtered_text
         assert result.ner_backend == backend
 
 
@@ -475,7 +475,7 @@ class TestRegexBackstopPIIParity:
         msg = f"backend={backend} {label} was not redacted (action={result.action})"
         assert result.action == "redact", msg
         assert pii_substring not in result.filtered_text
-        assert "[REDACTED]" in result.filtered_text
+        assert "[REDACTED:" in result.filtered_text
         assert result.ner_backend == backend
 
 

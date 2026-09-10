@@ -56,7 +56,10 @@ class StubUpstreamContentFilter:
     def _determine_action(self, text: str, violations: list[Any]) -> tuple[str, str]:
         redacted = text
         for v in violations:
-            redacted = redacted.replace(v.full_matched_text, "[REDACTED]")
+            # Mirror production: the real _apply_redactions names the PII type.
+            # A double that emits a bare [REDACTED] silently diverges from
+            # the code under test.
+            redacted = redacted.replace(v.full_matched_text, f"[REDACTED:{v.rule_name.upper()}]")
         return "redact", redacted
 
 
@@ -194,7 +197,7 @@ class TestRedactIsIrreversible:
 
         assert result.mapping_id is None
         assert len(valkey._store) == 0
-        assert "[REDACTED]" in result.text
+        assert "[REDACTED:" in result.text
 
 
 class TestDetectionReusesTiers:

@@ -51,7 +51,12 @@ class StubOutputContentFilter:
         redacted = text
         for v in violations:
             if v.action == "redact":
-                redacted = redacted.replace(v.full_matched_text, "[REDACTED]")
+                # Mirror production: the real _apply_redactions names the PII type.
+                # A double that emits a bare [REDACTED] silently diverges from
+                # the code under test.
+                redacted = redacted.replace(
+                    v.full_matched_text, f"[REDACTED:{v.rule_name.upper()}]"
+                )
         return ("redact" if redacted != text else "log"), redacted
 
     async def _invoke_llm_auditor(
@@ -90,7 +95,7 @@ class TestNonStreamedRedaction:
 
         assert result.action == "redact"
         assert _SECRET not in result.filtered_text
-        assert "[REDACTED]" in result.filtered_text
+        assert "[REDACTED:" in result.filtered_text
         assert result.redactions == 1  # (e) redaction counts surface for metering
 
 
@@ -132,7 +137,7 @@ class TestStreamingWindow:
 
         full_output = "".join(emitted)
         assert _SECRET not in full_output
-        assert "[REDACTED]" in full_output
+        assert "[REDACTED:" in full_output
         # Also verify no single yielded chunk carries a partial-but-recoverable
         # match (the property that actually matters for the "never leaks" claim).
         for piece in emitted:

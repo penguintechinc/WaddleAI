@@ -51,7 +51,7 @@ def test_pii_ssn_is_redacted_and_audited(
     assert "ssn" in row.violations_json.lower()
     # The raw SSN must never appear in the logged sample -- only the redacted form.
     assert "123-45-6789" not in row.text_sample
-    assert "[REDACTED]" in row.text_sample
+    assert "[REDACTED:" in row.text_sample
 
 
 def test_pii_custom_block_rule_hard_blocks_and_audits(

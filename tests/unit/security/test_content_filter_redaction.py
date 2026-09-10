@@ -34,7 +34,7 @@ def test_long_api_key_fully_redacted(filter_instance: ContentFilter) -> None:
     redacted = filter_instance._apply_redactions(text, [violation])
 
     # [REDACTED] should be present
-    assert "[REDACTED]" in redacted, "Placeholder should be in redacted text"
+    assert "[REDACTED:" in redacted, "Placeholder should be in redacted text"
 
     # Original secret (full or tail) should NOT survive in redacted text
     # Check that no 8+ char substring from the original token tail appears
@@ -63,7 +63,7 @@ def test_long_password_fully_redacted(filter_instance: ContentFilter) -> None:
 
     redacted = filter_instance._apply_redactions(text, [violation])
 
-    assert "[REDACTED]" in redacted, "Placeholder should be in redacted text"
+    assert "[REDACTED:" in redacted, "Placeholder should be in redacted text"
     assert long_password not in redacted, "Full password should not appear in redacted text"
     assert long_password[-20:] not in redacted, "Password tail should not leak"
 
@@ -84,7 +84,7 @@ def test_short_match_still_redacted(filter_instance: ContentFilter) -> None:
 
     redacted = filter_instance._apply_redactions(text, [violation])
 
-    assert "[REDACTED]" in redacted, "Short secret should be redacted"
+    assert "[REDACTED:" in redacted, "Short secret should be redacted"
     assert short_secret not in redacted, "Short secret should not appear in redacted text"
 
 
@@ -116,7 +116,7 @@ def test_multiple_long_secrets_all_redacted(filter_instance: ContentFilter) -> N
     redacted = filter_instance._apply_redactions(text, violations)
 
     # Both secrets should be replaced
-    assert redacted.count("[REDACTED]") == 2, "Both long secrets should be redacted"
+    assert redacted.count("[REDACTED:") == 2, "Both long secrets should be redacted"
     assert token1 not in redacted, "First secret should not appear"
     assert token2 not in redacted, "Second secret should not appear"
 
@@ -213,5 +213,5 @@ def test_logged_matched_text_stays_truncated(filter_instance: ContentFilter) -> 
     )
 
     redacted = filter_instance._apply_redactions(text, [violation])
-    assert "[REDACTED]" in redacted, "Full secret should be redacted using full_matched_text"
+    assert "[REDACTED:" in redacted, "Full secret should be redacted using full_matched_text"
     assert long_token not in redacted, "Complete token should be redacted"
