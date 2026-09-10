@@ -125,6 +125,91 @@ candidates, with an operator-visible warning. This is the direct fix for bug 7:
 requesting a model the host does not have becomes a loud inventory error rather
 than a silent routing degradation.
 
+### Integrity validation — digest pinning
+
+Existence is not enough. *A model is present* and *a model is the one we
+approved* are different claims, and today WaddleAI verifies neither.
+
+**Current state, audited 2026-09-10:**
+
+| | Finding |
+|---|---|
+| `model_registry.resolved_digest` | Column exists, comment reads "sha256, set once resolved at first pull" — **seeded NULL, never written, never read** |
+| Ollama's real digest | Parsed at `ollama_manager.py` into `OllamaModel.digest`, then **discarded**; never persisted or compared |
+| `ollama_models` table | **No digest column at all** |
+| llama.cpp weights | Fetched by an init container running `curl -fsSL -o "/models/$MODEL_FILE" "$MODEL_URL"` — **no checksum, no signature**. The cache-skip guard means a tampered file, once written, is never re-checked |
+
+So a compromised mirror, a MITM position, or write access to the model volume
+substitutes weights and nothing notices. This also contravenes
+`critical-rules.md` Dependency Pinning, which lists **AI/ML models → specific
+version/hash** as mandatory.
+
+**The mechanism exists.** Ollama's `/api/tags` returns a per-model sha256
+(verified against a live host 2026-09-10), so digests are capturable and
+comparable without new infrastructure.
+
+#### Design
+
+`model_registry` gains, alongside the existing `resolved_digest`:
+
+- `expected_digest` — what a global admin has approved. NULL means
+  trust-on-first-use is permitted for this model.
+- `digest_pinned` — whether a mismatch is fatal or advisory
+- `digest_verified_at`
+
+**Trust on first use, then pin.** At install, the digest observed on the target
+server is recorded as `expected_digest`. Every subsequent validation cycle
+re-reads it and compares.
+
+**A mismatch excludes the model from routing — it does not warn.** A model whose
+bytes changed underneath us is precisely the case where failing open is
+indefensible: the whole point is that we no longer know what we are running.
+Warning-and-serving would reproduce the pattern behind every silent failure this
+project has hit.
+
+**Re-approval is an explicit global-admin action.** A legitimate upgrade changes
+the digest, so an admin accepts the new one deliberately — recorded with who,
+when, the old digest and the new. Automatic re-pinning on change would make the
+control decorative: an attacker's substitution would be adopted as the new
+expected value.
+
+**For llama.cpp**, `model_url` gains a required `model_sha256`. The init
+container verifies the downloaded file before it is usable, and the cache-skip
+guard checks the digest rather than mere file presence — otherwise a tampered
+cached file is trusted forever.
+
+#### Error handling
+
+| Condition | Behaviour |
+|---|---|
+| Digest matches `expected_digest` | Normal; `digest_verified_at` updated |
+| Digest differs, `digest_pinned` | Model excluded from routing; operator alerted; **never auto-re-pinned** |
+| Digest differs, not pinned | Excluded, alerted, and flagged for admin decision |
+| No digest available from the backend | Model usable but marked unverifiable, and the trace records it — an unverifiable model must not be silently indistinguishable from a verified one |
+| llama.cpp download fails its checksum | File deleted, deployment fails to start. A partially-written or wrong-content weight file must never be left on the volume for the cache-skip guard to find |
+
+#### Telemetry
+
+Per the decision-audit design, integrity checks emit like any other decision:
+`waddleai.model.integrity` counter labelled `result`
+(`verified` / `mismatch` / `unverifiable`) and `model`. **`mismatch` is an
+alerting signal, not a dashboard curiosity.**
+
+#### Testing
+
+- **Mismatch excludes** — a model whose observed digest differs from
+  `expected_digest` is removed from the candidate set. The security-critical
+  assertion.
+- **No auto-re-pin** — after a mismatch, `expected_digest` is unchanged. This is
+  the test that keeps the control from decaying into a rubber stamp.
+- **TOFU records once** — first install writes the digest; a second validation
+  does not overwrite it.
+- **Unverifiable is distinguishable** — a backend reporting no digest yields
+  `unverifiable`, never `verified`.
+- **llama.cpp checksum enforcement** — a file whose sha256 does not match is
+  deleted and startup fails; a matching file proceeds. Includes the
+  cache-skip path, since that is where a tampered file would otherwise persist.
+
 ### Wiring the internal-function rows
 
 `routing-classifier`, `security-audit`, `summarize` and `docs-fetch` resolve
