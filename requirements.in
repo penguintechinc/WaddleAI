@@ -102,3 +102,11 @@ mcp>=1.28.1,<2.0
 # Performance
 ujson>=5.13.0
 orjson>=3.9.10
+# Build backend for packages compiled from sdist (no wheel for this
+# platform/Python combo). uv pulls this in automatically today but does
+# not attribute it to any package ("# via" is blank in requirements.txt),
+# so it was never declared anywhere -- Dependabot's independent resolver
+# has no metadata reason to keep it and silently drops the pin, which then
+# fails `pip install --require-hashes` ("all requirements must have their
+# versions pinned with =="). Declared explicitly so any resolver keeps it.
+setuptools==84.0.0
