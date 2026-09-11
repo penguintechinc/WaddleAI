@@ -229,6 +229,10 @@ def _apply_known_schema_drift_workarounds(database_url: str) -> None:
     TEST HARNESS only, not fixes: the application code
     (``shared/utils/token_manager.py``, ``shared/security/content_filter.py``)
     still needs correcting by whoever owns that area.
+
+    Tracked in gh-207. DELETE this function and its call site once gh-207 is
+    fixed -- every statement is idempotent, so it will keep silently passing
+    against a corrected schema and hide any regression if left in place.
     """
     import psycopg2  # noqa: PLC0415 -- optional dep of this one fixture, not the whole suite
 
