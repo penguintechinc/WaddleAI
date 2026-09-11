@@ -211,7 +211,7 @@ All models comply with supply chain restrictions:
 
 ## Migration from Previous Matrix
 
-**Previous (v1.0):** Used models up to 236GB (DeepSeek, llama3.1:405b)  
+**Previous (v1.0):** Used models up to 236GB (DeepSeek, llama3.1:405b)
 **Current (v2.0):** RTX 4090-optimized with quantization
 
 **Changes:**

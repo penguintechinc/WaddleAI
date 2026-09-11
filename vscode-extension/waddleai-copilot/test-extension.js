@@ -12,7 +12,7 @@ console.log('🚀 Testing WaddleAI VS Code Extension...\n');
 // Test 1: Check if all required files exist
 const requiredFiles = [
     'out/extension.js',
-    'out/chatParticipant.js', 
+    'out/chatParticipant.js',
     'out/waddleaiClient.js',
     'out/authProvider.js',
     'package.json'
@@ -52,19 +52,19 @@ console.log('\n🔧 Testing extension module...');
 try {
     const extensionPath = path.resolve('out/extension.js');
     const extension = require(extensionPath);
-    
+
     if (typeof extension.activate === 'function') {
         console.log('✅ Extension has activate function');
     } else {
         console.log('❌ Extension missing activate function');
     }
-    
+
     if (typeof extension.deactivate === 'function') {
         console.log('✅ Extension has deactivate function');
     } else {
         console.log('❌ Extension missing deactivate function');
     }
-    
+
 } catch (error) {
     console.log(`❌ Failed to load extension: ${error.message}`);
 }
@@ -74,7 +74,7 @@ console.log('\n🌐 Testing WaddleAI Client...');
 try {
     const WaddleAIClient = require('./out/waddleaiClient').WaddleAIClient;
     console.log('✅ WaddleAIClient can be imported');
-    
+
     // Mock context for testing
     const mockContext = {
         secrets: {
@@ -85,10 +85,10 @@ try {
             packageJSON: { version: '0.1.0' }
         }
     };
-    
+
     const client = new WaddleAIClient(mockContext);
     console.log('✅ WaddleAIClient can be instantiated');
-    
+
 } catch (error) {
     console.log(`❌ WaddleAI Client error: ${error.message}`);
 }
@@ -96,7 +96,7 @@ try {
 console.log('\n🎉 Extension basic tests completed!');
 console.log('\n📋 Next steps:');
 console.log('1. Open this folder in VS Code');
-console.log('2. Press F5 to launch Extension Development Host'); 
+console.log('2. Press F5 to launch Extension Development Host');
 console.log('3. In the new VS Code window, open Chat panel');
 console.log('4. Type "@waddleai" to interact with the participant');
 console.log('5. Configure API key using Command Palette: "WaddleAI: Set API Key"');
