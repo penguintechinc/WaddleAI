@@ -245,6 +245,68 @@ class TestAuthenticateApiKey:
             assert "API key user is disabled" in str(exc_info.value)
 
 
+class TestAuthenticateApiKeyRealDAL:
+    """authenticate_api_key() against a real penguin_dal DB (not a bare Mock).
+
+    # regression: gh-130
+
+    Every test in TestAuthenticateApiKey above wires `mock_db` as a bare
+    MagicMock(), which answers ANY attribute access -- including
+    `.update_record()`, the classic-PyDAL method real penguin_dal Row
+    objects do not implement. Those tests would keep passing even if
+    shared/auth/rbac.py regressed back to
+    `key_record.update_record(last_used=...)`, exactly gh-130's second
+    fault (an uncaught AttributeError inside API-key auth, surfaced
+    upstream as a generic 401 for every otherwise-valid key). This class
+    runs authenticate_api_key() against a real, fully-migrated penguin_dal
+    DB (sqlite, in-memory) so a regression to `.update_record()` fails
+    here with the same AttributeError it raised in production.
+    """
+
+    @pytest.fixture
+    def real_db(self):
+        """A real, fully-schema'd penguin_dal DB (sqlite, in-memory)."""
+        from shared.database.models import get_db
+
+        return get_db(db_uri="sqlite://", migrate=True)
+
+    def test_valid_api_key_authenticates_and_persists_last_used(self, real_db):
+        """A correct wa- API key authenticates and durably updates last_used."""
+        org_id = real_db.organizations.insert(name="acme")
+        user_id = real_db.users.insert(
+            username="apiuser",
+            email="apiuser@example.com",
+            password_hash=hash_password("unused-login-password"),
+            role="user",
+            organization_id=org_id,
+        )
+        real_db.commit()
+
+        manager = RBACManager(real_db)
+        user_context = UserContext(
+            user_id=user_id,
+            username="apiuser",
+            role=Role.USER,
+            organization_id=org_id,
+            managed_orgs=[],
+            permissions=ROLE_PERMISSIONS[Role.USER],
+        )
+        raw_key, key_record_id = manager.create_api_key(user_context, name="test key")
+        real_db.commit()
+
+        before = real_db(real_db.api_keys.id == key_record_id).select().first()
+        assert before.last_used is None
+
+        context = manager.authenticate_api_key(raw_key)
+
+        assert context.user_id == user_id
+        assert context.username == "apiuser"
+        assert context.api_key_id == key_record_id
+
+        after = real_db(real_db.api_keys.id == key_record_id).select().first()
+        assert after.last_used is not None
+
+
 class TestBuildUserContext:
     """Test _build_user_context method."""
 

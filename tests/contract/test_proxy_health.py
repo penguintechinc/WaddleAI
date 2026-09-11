@@ -26,6 +26,10 @@ def test_readyz_ready(proxy_url):
     """GET /readyz returns 200 with JSON body containing 'status' key.
 
     In test mode with sqlite DB up, readyz should report ready.
+
+    # regression: gh-130 -- penguin_dal API incompatibilities in the
+    # DatabaseHealthChecker (shared/utils/health_checks.py) made this probe
+    # report UNHEALTHY (503) unconditionally, even against a healthy DB.
     """
     r = httpx.get(f"{proxy_url}/readyz")
     assert r.status_code == 200
@@ -39,6 +43,8 @@ def test_readyz_no_auth_required(proxy_url):
     """GET /readyz works without Authorization header (proves it's public).
 
     Kubelet probes do not send auth headers; verify endpoints are in _PUBLIC_PATHS.
+
+    # regression: gh-130 -- see test_readyz_ready above.
     """
     # No Authorization header; if /readyz were gated, this would 401
     r = httpx.get(f"{proxy_url}/readyz")
