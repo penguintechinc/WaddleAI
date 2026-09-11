@@ -21,7 +21,13 @@ repos:
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
+        # .claude/*.md (excluding *.local.md) are centralized standards
+        # templates synced verbatim from the admin repo -- CLAUDE.md forbids
+        # editing them here, so a whitespace drift in the upstream template
+        # must not fail (or be silently "fixed" in) this repo's gate.
+        exclude: ^\.claude/(?!.*\.local\.md$)[^/]*\.md$
       - id: end-of-file-fixer
+        exclude: ^\.claude/(?!.*\.local\.md$)[^/]*\.md$
       - id: check-merge-conflict
       - id: check-case-conflict
       - id: check-added-large-files
