@@ -21,7 +21,13 @@ repos:
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
+        # .claude/*.md (excluding *.local.md) are centralized standards
+        # templates synced verbatim from the admin repo -- CLAUDE.md forbids
+        # editing them here, so a whitespace drift in the upstream template
+        # must not fail (or be silently "fixed" in) this repo's gate.
+        exclude: ^\.claude/(?!.*\.local\.md$)[^/]*\.md$
       - id: end-of-file-fixer
+        exclude: ^\.claude/(?!.*\.local\.md$)[^/]*\.md$
       - id: check-merge-conflict
       - id: check-case-conflict
       - id: check-added-large-files
@@ -76,7 +82,14 @@ repos:
     hooks:
       - id: eslint-webui
         name: eslint (services/webui)
-        entry: bash -c 'cd services/webui && npx eslint src --ext js,jsx --max-warnings 0'
+        entry: >-
+          bash -c 'set -euo pipefail; cd services/webui &&
+          if [ ! -x node_modules/.bin/eslint ]; then
+          echo "ERROR: services/webui/node_modules is not installed (pinned eslint 8.57.1 unavailable)." >&2;
+          echo "Run: cd services/webui && npm ci" >&2;
+          exit 1;
+          fi;
+          node_modules/.bin/eslint src --ext js,jsx --max-warnings 0'
         language: system
         files: ^services/webui/src/.*\.(js|jsx)$
         pass_filenames: false

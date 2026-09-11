@@ -16,6 +16,7 @@ set -euo pipefail
 #   --skip-build          Skip docker build and push
 #   --dry-run            Show what would be deployed without applying
 #   --rollback <release> Rollback to previous release
+#   --verbose            Print each command as it runs (bash xtrace)
 #   --help               Show this help message
 #
 ###############################################################################
@@ -27,8 +28,10 @@ readonly CHART_PATH="./k8s/helm/penguincode"
 readonly IMAGE_REGISTRY="registry-dal2.penguintech.io"
 readonly KUBE_CONTEXT="dal2-beta"
 readonly APP_HOST="penguincode.penguintech.cloud"
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly PROJECT_ROOT="$(dirname "${SCRIPT_DIR}")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR
+PROJECT_ROOT="$(dirname "${SCRIPT_DIR}")"
+readonly PROJECT_ROOT
 
 # Default values
 TAG=""
@@ -341,7 +344,8 @@ verify_deployment() {
 
     # Check app health
     print_info "Checking application health..."
-    local pod_name=$(kubectl get pods -n "$NAMESPACE" -l app=penguincode \
+    local pod_name
+    pod_name=$(kubectl get pods -n "$NAMESPACE" -l app=penguincode \
         -o jsonpath='{.items[0].metadata.name}')
 
     if [[ -n "$pod_name" ]]; then
@@ -423,6 +427,10 @@ main() {
 
     # Parse arguments
     parse_arguments "$@"
+
+    if [[ "$VERBOSE" == true ]]; then
+        set -x
+    fi
 
     # Handle rollback mode
     if [[ -n "$ROLLBACK_RELEASE" ]]; then

@@ -31,7 +31,7 @@ The WaddleAI VS Code extension has been successfully compiled and is ready for t
 ### Step 4: Test Configuration Commands
 Test these commands via Command Palette:
 - **WaddleAI: Select Model** - Choose from available models
-- **WaddleAI: Test Connection** - Verify API connectivity  
+- **WaddleAI: Test Connection** - Verify API connectivity
 - **WaddleAI: Show Token Usage** - View usage statistics
 - **WaddleAI: Clear Conversation Memory** - Reset conversation history
 

@@ -8,10 +8,10 @@ import axios from 'axios';
 export class AuthenticationProvider implements vscode.AuthenticationProvider {
     private static readonly PROVIDER_ID = 'waddleai-auth';
     private static readonly LABEL = 'WaddleAI';
-    
+
     private _sessions: vscode.AuthenticationSession[] = [];
     private _onDidChangeSessions = new vscode.EventEmitter<vscode.AuthenticationProviderAuthenticationSessionsChangeEvent>();
-    
+
     public readonly onDidChangeSessions = this._onDidChangeSessions.event;
 
     constructor(private context: vscode.ExtensionContext) {
@@ -52,10 +52,10 @@ export class AuthenticationProvider implements vscode.AuthenticationProvider {
 
         // Validate API key with WaddleAI
         const session = await this.validateAndCreateSession(apiKey);
-        
+
         this._sessions.push(session);
         await this.storeSessions();
-        
+
         this._onDidChangeSessions.fire({
             added: [session],
             removed: [],
@@ -73,9 +73,9 @@ export class AuthenticationProvider implements vscode.AuthenticationProvider {
         if (sessionIndex > -1) {
             const session = this._sessions[sessionIndex];
             this._sessions.splice(sessionIndex, 1);
-            
+
             await this.storeSessions();
-            
+
             this._onDidChangeSessions.fire({
                 added: [],
                 removed: [session],
@@ -107,15 +107,15 @@ export class AuthenticationProvider implements vscode.AuthenticationProvider {
         if (!apiKey) {
             return 'API key is required';
         }
-        
+
         if (!apiKey.startsWith('wa-')) {
             return 'Invalid API key format. WaddleAI API keys start with "wa-"';
         }
-        
+
         if (apiKey.length < 40) {
             return 'API key appears to be too short';
         }
-        
+
         return undefined;
     }
 
@@ -125,7 +125,7 @@ export class AuthenticationProvider implements vscode.AuthenticationProvider {
     private async validateAndCreateSession(apiKey: string): Promise<vscode.AuthenticationSession> {
         const config = vscode.workspace.getConfiguration('waddleai');
         const endpoint = config.get<string>('apiEndpoint') || 'http://localhost:8000';
-        
+
         try {
             // Test the API key by making a request to the user info endpoint
             const response = await axios.get(`${endpoint}/v1/user/me`, {
@@ -138,7 +138,7 @@ export class AuthenticationProvider implements vscode.AuthenticationProvider {
 
             const userData = response.data;
             const sessionId = `waddleai-${Date.now()}`;
-            
+
             const session: vscode.AuthenticationSession = {
                 id: sessionId,
                 accessToken: apiKey,
@@ -157,10 +157,10 @@ export class AuthenticationProvider implements vscode.AuthenticationProvider {
             }));
 
             return session;
-            
+
         } catch (error: any) {
             let errorMessage = 'Failed to authenticate with WaddleAI';
-            
+
             if (error.response) {
                 switch (error.response.status) {
                     case 401:
@@ -181,7 +181,7 @@ export class AuthenticationProvider implements vscode.AuthenticationProvider {
             } else if (error.code === 'ECONNREFUSED') {
                 errorMessage = 'Cannot connect to WaddleAI server. Please check the endpoint configuration.';
             }
-            
+
             throw new Error(errorMessage);
         }
     }
@@ -192,13 +192,13 @@ export class AuthenticationProvider implements vscode.AuthenticationProvider {
     private async loadSessions(): Promise<void> {
         try {
             const storedSessions = await this.context.globalState.get<string[]>('waddleai.sessionIds', []);
-            
+
             for (const sessionId of storedSessions) {
                 try {
                     const sessionDataStr = await this.context.secrets.get(`waddleai.session.${sessionId}`);
                     if (sessionDataStr) {
                         const sessionData = JSON.parse(sessionDataStr);
-                        
+
                         // Reconstruct session
                         const session: vscode.AuthenticationSession = {
                             id: sessionId,
@@ -209,7 +209,7 @@ export class AuthenticationProvider implements vscode.AuthenticationProvider {
                             },
                             scopes: []
                         };
-                        
+
                         this._sessions.push(session);
                     }
                 } catch (error) {
@@ -218,10 +218,10 @@ export class AuthenticationProvider implements vscode.AuthenticationProvider {
                     await this.context.secrets.delete(`waddleai.session.${sessionId}`);
                 }
             }
-            
+
             // Update stored session IDs to only include valid ones
             await this.storeSessions();
-            
+
         } catch (error) {
             console.error('Failed to load authentication sessions:', error);
         }
@@ -249,22 +249,22 @@ export class AuthenticationProvider implements vscode.AuthenticationProvider {
         try {
             // Validate the existing API key
             const newSession = await this.validateAndCreateSession(session.accessToken);
-            
+
             // Update the session
             const index = this._sessions.findIndex(s => s.id === session.id);
             if (index >= 0) {
                 this._sessions[index] = newSession;
                 await this.storeSessions();
-                
+
                 this._onDidChangeSessions.fire({
                     added: [],
                     removed: [],
                     changed: [newSession]
                 });
             }
-            
+
             return newSession;
-            
+
         } catch (error) {
             // If refresh fails, remove the session
             await this.removeSession(session.id);

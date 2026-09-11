@@ -22,37 +22,37 @@ if (fs.existsSync(outDir)) {
 try {
     // Install dependencies
     console.log('📦 Installing dependencies...');
-    execSync('npm install', { 
-        cwd: projectRoot, 
+    execSync('npm install', {
+        cwd: projectRoot,
         stdio: 'inherit'
     });
-    
+
     // Lint code
     console.log('🔍 Linting code...');
-    execSync('npm run lint', { 
-        cwd: projectRoot, 
+    execSync('npm run lint', {
+        cwd: projectRoot,
         stdio: 'inherit'
     });
-    
+
     // Compile TypeScript
     console.log('⚙️ Compiling TypeScript...');
-    execSync('npm run compile', { 
-        cwd: projectRoot, 
+    execSync('npm run compile', {
+        cwd: projectRoot,
         stdio: 'inherit'
     });
-    
+
     // Copy assets
     console.log('📋 Copying assets...');
     const mediaDir = path.join(projectRoot, 'media');
     const outMediaDir = path.join(outDir, 'media');
-    
+
     if (fs.existsSync(mediaDir)) {
         fs.cpSync(mediaDir, outMediaDir, { recursive: true });
         console.log('✓ Copied media assets');
     }
-    
+
     console.log('✅ Build completed successfully!');
-    
+
 } catch (error) {
     console.error('❌ Build failed:', error.message);
     process.exit(1);

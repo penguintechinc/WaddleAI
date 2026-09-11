@@ -2,7 +2,7 @@
 # Version update script for Penguin Code
 # Format: vMajor.Minor.Patch.epoch64
 
-set -e
+set -euo pipefail
 
 VERSION_FILE=".version"
 
@@ -20,7 +20,6 @@ VERSION_WITHOUT_V=${CURRENT_VERSION#v}
 MAJOR=$(echo "$VERSION_WITHOUT_V" | cut -d. -f1)
 MINOR=$(echo "$VERSION_WITHOUT_V" | cut -d. -f2)
 PATCH=$(echo "$VERSION_WITHOUT_V" | cut -d. -f3)
-OLD_EPOCH=$(echo "$VERSION_WITHOUT_V" | cut -d. -f4)
 
 # Get new epoch timestamp
 NEW_EPOCH=$(date +%s)

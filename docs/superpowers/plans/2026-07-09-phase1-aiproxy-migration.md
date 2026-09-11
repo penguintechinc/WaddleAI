@@ -286,7 +286,7 @@ Extract the pipeline into ordered, flag-aware, independently testable stage clas
 
 - [ ] **Step 2: Run tests, verify they fail** — `ModuleNotFoundError: ...pipeline`.
 
-- [ ] **Step 3: Implement** — 
+- [ ] **Step 3: Implement** —
   ```python
   @dataclass(slots=True)
   class PipelineContext:
