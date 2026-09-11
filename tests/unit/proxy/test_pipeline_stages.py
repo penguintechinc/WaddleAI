@@ -1097,7 +1097,7 @@ class TestMeterStageImplementation:
         metering_buffer.record.assert_called_once()
         event = metering_buffer.record.call_args[0][0]
         assert isinstance(event, MeteringEvent)
-        assert event.virtual_key_id == 42
+        assert event.api_key_id == 42
         assert event.model == "gpt-4o"
 
     async def test_meter_stage_reconciles_reservation(self):
@@ -1389,7 +1389,7 @@ class TestGh212RealUserContextBudgetAndMeterRegression:
         await metering_buffer.flush()
 
         assert len(written) == 1
-        assert written[0].virtual_key_id == 4242
+        assert written[0].api_key_id == 4242
         assert written[0].total_input_tokens == 50
         assert written[0].total_output_tokens == 100
         assert written[0].request_count == 1

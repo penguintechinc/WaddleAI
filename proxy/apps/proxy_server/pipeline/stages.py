@@ -1310,7 +1310,7 @@ class MeterStage(Stage):
         # ctx.provider == "cache" on a hit, spec §6.4 cache_status/tokens_saved).
         if ctx.usage and ctx.provider and ctx.model:
             event = MeteringEvent(
-                virtual_key_id=api_key_id,
+                api_key_id=api_key_id,
                 model=ctx.model,
                 provider=ctx.provider,
                 usage=ctx.usage,
