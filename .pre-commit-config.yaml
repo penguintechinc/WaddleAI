@@ -76,7 +76,14 @@ repos:
     hooks:
       - id: eslint-webui
         name: eslint (services/webui)
-        entry: bash -c 'cd services/webui && npx eslint src --ext js,jsx --max-warnings 0'
+        entry: >-
+          bash -c 'set -euo pipefail; cd services/webui &&
+          if [ ! -x node_modules/.bin/eslint ]; then
+          echo "ERROR: services/webui/node_modules is not installed (pinned eslint 8.57.1 unavailable)." >&2;
+          echo "Run: cd services/webui && npm ci" >&2;
+          exit 1;
+          fi;
+          node_modules/.bin/eslint src --ext js,jsx --max-warnings 0'
         language: system
         files: ^services/webui/src/.*\.(js|jsx)$
         pass_filenames: false
