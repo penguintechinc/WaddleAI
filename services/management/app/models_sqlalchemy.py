@@ -21,6 +21,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     create_engine,
+    func,
     text,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
@@ -334,7 +335,16 @@ class TokenUsage(Base):
     __tablename__ = "token_usage"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    # Vestigial (gh-207): points at virtual_keys, a table nothing under
+    # shared/ or proxy/ ever writes through this request path -- the
+    # pipeline's MeterStage/TokenBudgetStage key off ctx.user.vkey_id, an
+    # attribute UserContext (shared/auth/rbac.py) never sets, so that write
+    # path is inert. Left in place rather than dropped -- see migration
+    # 020_token_usage_api_key_id's docstring; not removed in this PR.
     virtual_key_id = Column(Integer, ForeignKey("virtual_keys.id"))
+    # The column shared/utils/token_manager.py (the live runtime writer)
+    # actually reads/writes -- added by migration 020_token_usage_api_key_id.
+    api_key_id = Column(Integer, ForeignKey("api_keys.id", ondelete="SET NULL"), nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     organization_id = Column(Integer, ForeignKey("organizations.id"))
     date = Column(DateTime)  # Date for this usage record
@@ -362,7 +372,11 @@ class UsageCache(Base):
     __tablename__ = "usage_cache"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    # Vestigial (gh-207) -- see the identical note on TokenUsage.virtual_key_id above.
     virtual_key_id = Column(Integer, ForeignKey("virtual_keys.id"))
+    # The column shared/utils/token_manager.py actually reads/writes --
+    # added by migration 020_token_usage_api_key_id.
+    api_key_id = Column(Integer, ForeignKey("api_keys.id", ondelete="SET NULL"), nullable=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"))
     period = Column(String(20), nullable=False)  # daily, monthly
     period_start = Column(DateTime, nullable=False)
@@ -1033,7 +1047,12 @@ class ContentFilterAuditLog(Base):
     __tablename__ = "content_filter_audit_log"
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow)
+    # gh-207: server_default is load-bearing, not decorative -- this table
+    # is written through PyDAL against get_db()'s *reflected* Table object
+    # in production (shared/security/content_filter.py), where the
+    # Python-side `default=` below never applies (it only fires through the
+    # SQLAlchemy ORM insert path). See migration 020_token_usage_api_key_id.
+    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow, server_default=func.now())
     phase = Column(String(10), nullable=False)  # 'input', 'output'
     user_id = Column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
@@ -1058,7 +1077,9 @@ class ContentFilterAuditLog(Base):
         nullable=True,
     )
     intent_categories = Column(JSON, nullable=True)  # Intent-classifier per-category verdicts
-    degraded = Column(Boolean, nullable=False, default=False)  # True if fail_mode=degrade fired
+    # True if fail_mode=degrade fired (gh-207: server_default is load-bearing --
+    # see the identical note on `timestamp` above).
+    degraded = Column(Boolean, nullable=False, default=False, server_default=text("false"))
     bypass_grant_id = Column(
         Integer,
         ForeignKey("security_bypass_grants.id", ondelete="SET NULL", name="fk_cfal_bypass_grant"),

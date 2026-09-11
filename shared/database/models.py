@@ -380,6 +380,12 @@ def define_tables(db):
         Field("auditor_used", "boolean", default=False),
         Field("auditor_decision", "string"),  # 'block', 'allow', NULL if not invoked
         Field("request_id", "string"),  # For correlation with proxy logs
+        # Added by migration 011_security_v2.py; missing here entirely
+        # (not just missing a default) until gh-207 -- needed because
+        # shared/security/content_filter.py's _log_filter_event now sets
+        # this explicitly on every insert (see migration
+        # 020_token_usage_api_key_id).
+        Field("degraded", "boolean", default=False),
     )
 
     # Content Filter Configuration (key-value store for auditor settings)

@@ -24,49 +24,57 @@ the "a gate that cannot fail is not a gate" standard (see
 ``tests/gpu_preflight.py``, whose ``require_live_model`` this module reuses
 for its own preflight).
 
-BUGS FOUND (previously hidden by every stub-upstream fixture; see
-``_apply_known_schema_drift_workarounds`` for the exact, narrowly-scoped
-DB-level workarounds this test harness applies so the real path can be
-exercised at all -- these are workarounds for the test harness, not fixes;
-the application code below still needs correcting by whoever owns it):
+BUGS FOUND, gh-207 (previously hidden by every stub-upstream fixture).
+Defects 1-3 are FIXED as of migration ``020_token_usage_api_key_id`` --
+this module no longer applies any DB-level workaround (removed along with
+the ``_apply_known_schema_drift_workarounds`` function that used to patch
+around them) and exercises the real, corrected schema directly. Defect 4
+remains open (tracked in gh-207, not fixed by this module):
 
 1. ``shared/utils/token_manager.py`` reads/writes ``token_usage.api_key_id``
-   and ``usage_cache.api_key_id``, but the real (Alembic-authoritative)
-   schema has never had an ``api_key_id`` column on either table -- only
-   ``virtual_key_id`` (``services/management/app/models_sqlalchemy.py``
-   ``TokenUsage``/``UsageCache``), tied to the separate, proxy-unused
-   ``virtual_keys`` table. Every real (non-cache-hit) chat completion
-   raises inside ``token_manager.process_usage()``
-   (called unconditionally from ``proxy/apps/proxy_server/main.py``'s
-   ``chat_completions()``, ~line 1427), caught by that function's broad
-   ``except Exception`` (~line 1519) and returned to the client as an
-   opaque HTTP 500 "Internal server error". Nothing in ``shared/`` or
-   ``proxy/`` ever reads or writes ``virtual_keys`` -- it appears to be a
-   management-only concept that was never wired into the proxy's own
-   auth/metering path.
+   and ``usage_cache.api_key_id``. The real (Alembic-authoritative) schema
+   had no ``api_key_id`` column on either table -- only ``virtual_key_id``
+   (``services/management/app/models_sqlalchemy.py``
+   ``TokenUsage``/``UsageCache``), tied to the separate ``virtual_keys``
+   table. Investigation confirmed ``virtual_key_id`` is genuinely vestigial
+   on the proxy's request path: ``MeterStage``/``TokenBudgetStage``
+   (``proxy/apps/proxy_server/pipeline/stages.py``) key off
+   ``ctx.user.vkey_id``, an attribute ``shared.auth.rbac.UserContext`` --
+   the only class ever assigned to ``ctx.user`` -- never sets, so that
+   write path has always been inert; ``virtual_key_id`` is otherwise only
+   exercised by the management service's own virtual-key CRUD, a separate
+   admin feature. FIXED: migration ``020_token_usage_api_key_id`` adds
+   ``api_key_id`` (nullable FK to ``api_keys.id``) to both tables;
+   ``virtual_key_id`` is left in place, not dropped, per that migration's
+   docstring.
 
-2. ``content_filter_audit_log.timestamp`` is ``NOT NULL`` with only a
+2. ``content_filter_audit_log.timestamp`` was ``NOT NULL`` with only a
    Python-side SQLAlchemy ORM default (``default=datetime.utcnow`` in
-   ``models_sqlalchemy.py``), which never applies when the row is inserted
+   ``models_sqlalchemy.py``), which never applied when the row was inserted
    through PyDAL against ``get_db()``'s *reflected* Table object (default
    ``reflect=True``, ``shared/database/models.py``) -- a reflected table
    only carries the live catalog's server-side default, not a sibling ORM
    class's Python callable. ``shared/security/content_filter.py``'s
-   ``_log_filter_event`` (~line 1652) already carries a comment describing
-   an *earlier* version of this same bug (a raw float epoch instead of a
+   ``_log_filter_event`` (~line 1652) carried a comment describing an
+   *earlier* version of this same bug (a raw float epoch instead of a
    datetime) and "fixed" it by omitting the kwarg to rely on that default --
-   which only actually works against a PyDAL-native (sqlite, ``migrate=True``)
-   schema, never against real Postgres. Every real audit-log insert fails
-   ``NOT NULL`` without a workaround, so the compliance audit trail for
-   every real PII/content-filter decision is silently never written in
-   production (the failure is caught inside ``_log_filter_event`` itself
-   and only logged, never raised).
+   which only actually worked against a PyDAL-native (sqlite,
+   ``migrate=True``) schema, never against real Postgres. Every real
+   audit-log insert failed ``NOT NULL``, so the compliance audit trail for
+   every real PII/content-filter decision was silently never written in
+   production (the failure was caught inside ``_log_filter_event`` itself
+   and only logged, never raised). FIXED: migration
+   ``020_token_usage_api_key_id`` adds a ``server_default`` (holds
+   regardless of which layer inserts the row), and ``_log_filter_event``
+   now also sets the value explicitly.
 
-3. ``content_filter_audit_log.degraded`` is ALSO ``NOT NULL`` with no
-   default at all, and ``_log_filter_event``'s ``insert()`` call never sets
-   it -- a second, independent ``NOT NULL`` violation stacked on bug 2,
-   confirmed by removing bug 2's blocker and observing this one immediately
-   underneath it.
+3. ``content_filter_audit_log.degraded`` was ALSO ``NOT NULL`` with no
+   default at all, and ``_log_filter_event``'s ``insert()`` call never set
+   it -- a second, independent ``NOT NULL`` violation stacked on bug 2.
+   FIXED the same way as bug 2 (``server_default`` plus an explicit value
+   from ``_log_filter_event``, now threaded from a real
+   ``FilterResult.degraded`` signal set when the LLM auditor call fails
+   and the pipeline falls back to the rule-based decision alone).
 
 4. Migration ``001_baseline.py`` is a documented no-op ("all tables in this
    baseline were created by SQLAlchemy ``create_all()`` before Alembic was
@@ -218,40 +226,6 @@ def real_postgres() -> Any:
         subprocess.run(["docker", "rm", "-f", name], capture_output=True, timeout=30)  # noqa: S603, S607
 
 
-def _apply_known_schema_drift_workarounds(database_url: str) -> None:
-    """Patch the four confirmed, real schema-drift bugs so the real path can run.
-
-    See this module's docstring ("BUGS FOUND") for the full explanation of
-    each. Every statement here is purely additive (a new nullable column,
-    or a ``DEFAULT`` added to an existing column) -- nothing is dropped or
-    renamed, so the rest of the schema stays identical to a genuine
-    ``alembic stamp head`` database. These are workarounds scoped to THIS
-    TEST HARNESS only, not fixes: the application code
-    (``shared/utils/token_manager.py``, ``shared/security/content_filter.py``)
-    still needs correcting by whoever owns that area.
-
-    Tracked in gh-207. DELETE this function and its call site once gh-207 is
-    fixed -- every statement is idempotent, so it will keep silently passing
-    against a corrected schema and hide any regression if left in place.
-    """
-    import psycopg2  # noqa: PLC0415 -- optional dep of this one fixture, not the whole suite
-
-    statements = [
-        "ALTER TABLE token_usage ADD COLUMN IF NOT EXISTS api_key_id INTEGER",
-        "ALTER TABLE usage_cache ADD COLUMN IF NOT EXISTS api_key_id INTEGER",
-        "ALTER TABLE content_filter_audit_log ALTER COLUMN timestamp SET DEFAULT now()",
-        "ALTER TABLE content_filter_audit_log ALTER COLUMN degraded SET DEFAULT false",
-    ]
-    conn = psycopg2.connect(database_url)
-    try:
-        conn.autocommit = True
-        with conn.cursor() as cur:
-            for statement in statements:
-                cur.execute(statement)
-    finally:
-        conn.close()
-
-
 def _bootstrap_schema(database_url: str) -> None:
     """Bootstrap the REAL, Alembic-authoritative production schema onto ``database_url``.
 
@@ -278,8 +252,6 @@ def _bootstrap_schema(database_url: str) -> None:
     cfg.set_main_option("script_location", str(MANAGEMENT_DIR / "alembic"))
     os.environ["DATABASE_URL"] = database_url  # alembic/env.py's get_url() reads this
     stamp(cfg, "head")
-
-    _apply_known_schema_drift_workarounds(database_url)
 
 
 @pytest.fixture(scope="session")

@@ -174,8 +174,17 @@ def test_downgrade_restores_e2b(scratch_db) -> None:
     assert assignments["chat"] == "gemma4:12b"
 
 
-def test_019_is_the_single_alembic_head() -> None:
-    """019 is the one resolvable head -- no divergent branches introduced."""
+def test_single_alembic_head_no_divergent_branches() -> None:
+    """Exactly one resolvable Alembic head -- no divergent branches introduced.
+
+    The `len(heads) == 1` assertion is the durable invariant: two heads mean
+    two migrations claim the same `down_revision`, which `alembic upgrade head`
+    cannot resolve.
+
+    The identity assertion is deliberately pinned so that adding a migration is
+    an explicit, reviewed act rather than a silent one -- bump it in the same
+    commit that adds the migration.
+    """
     from alembic.script import ScriptDirectory
 
     cfg = _alembic_config("sqlite://")
@@ -183,4 +192,4 @@ def test_019_is_the_single_alembic_head() -> None:
     heads = script.get_heads()
 
     assert len(heads) == 1
-    assert heads[0] == "019_gemma4_e4b_minimum"
+    assert heads[0] == "020_token_usage_api_key_id"

@@ -90,17 +90,24 @@ class TestAuditLogWritePath:
         assert row is not None
         assert len(row.text_sample) == 200
 
-    def test_timestamp_defaults_rather_than_being_passed_explicitly(
+    def test_timestamp_is_populated(
         self, filter_instance: ContentFilter, content_filter_db: DAL
     ) -> None:
-        """No `timestamp=` kwarg is passed -- the column's own default populates it.
+        """`timestamp` is populated on every insert.
 
-        Regression: this method previously passed `timestamp=time.time()`
-        (a float epoch) against a `datetime` column, which penguin-dal
-        rejects -- every insert silently failed under the method's own
-        broad exception handler. Omitting the kwarg and asserting the row
-        was actually written (with a non-null timestamp) is the regression
-        guard.
+        Regression history: this method previously passed
+        `timestamp=time.time()` (a float epoch) against a `datetime`
+        column, which penguin-dal rejects -- every insert silently failed
+        under the method's own broad exception handler. That was "fixed" by
+        omitting the kwarg entirely and relying on the column's own
+        default -- which only ever worked against a self-migrated sqlite
+        schema (this fixture) and never against the real, reflected
+        Postgres table in production (gh-207 defects 2/3): `get_db()`
+        reflects the table before `define_tables()` runs, so the
+        Python-side default declared in `shared/database/models.py` was
+        never actually registered on it. `_log_filter_event` now passes
+        `timestamp=` explicitly (backed by a `server_default` in migration
+        `020_token_usage_api_key_id` for whichever layer inserts the row).
         """
         result = FilterResult(
             allowed=True, action="allow", violations=[], filtered_text="hi", auditor_used=False
@@ -117,6 +124,49 @@ class TestAuditLogWritePath:
         )
         assert row is not None
         assert row.timestamp is not None
+
+    def test_degraded_is_set_explicitly(
+        self, filter_instance: ContentFilter, content_filter_db: DAL
+    ) -> None:
+        """`degraded` is populated on every insert, mirroring `FilterResult.degraded`.
+
+        # regression: gh-207 -- `content_filter_audit_log.degraded` was
+        # NOT NULL with no default at all and no insert ever set it,
+        # a second, independent NOT NULL violation stacked on the
+        # `timestamp` bug above.
+        """
+        allow_result = FilterResult(
+            allowed=True, action="allow", violations=[], filtered_text="hi", auditor_used=False
+        )
+        filter_instance._log_filter_event(
+            phase="input", result=allow_result, user_id=5, org_id=None, ip=None
+        )
+        allow_row = (
+            content_filter_db(content_filter_db.content_filter_audit_log.user_id == 5)
+            .select()
+            .first()
+        )
+        assert allow_row is not None
+        assert allow_row.degraded is False
+
+        degraded_result = FilterResult(
+            allowed=True,
+            action="allow",
+            violations=[],
+            filtered_text="hi",
+            auditor_used=False,
+            degraded=True,
+        )
+        filter_instance._log_filter_event(
+            phase="input", result=degraded_result, user_id=6, org_id=None, ip=None
+        )
+        degraded_row = (
+            content_filter_db(content_filter_db.content_filter_audit_log.user_id == 6)
+            .select()
+            .first()
+        )
+        assert degraded_row is not None
+        assert degraded_row.degraded is True
 
     def test_redact_action_logs_at_info_not_warning(
         self, filter_instance: ContentFilter, caplog: pytest.LogCaptureFixture
