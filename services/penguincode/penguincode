@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # PenguinCode run script - activates venv and runs the CLI
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+cd "$SCRIPT_DIR" || exit 1
 
 # Auto-bootstrap: create venv and install deps on first run
 if [ ! -d "venv" ]; then

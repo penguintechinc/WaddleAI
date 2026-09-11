@@ -32,8 +32,10 @@ set -euo pipefail
 # Configuration
 # =============================================================================
 
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly PROJECT_ROOT="$(dirname "${SCRIPT_DIR}")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR
+PROJECT_ROOT="$(dirname "${SCRIPT_DIR}")"
+readonly PROJECT_ROOT
 
 readonly APP_NAME="${APP_NAME:-penguincode}"
 readonly KUBE_CONTEXT="${KUBE_CONTEXT:-local-alpha}"

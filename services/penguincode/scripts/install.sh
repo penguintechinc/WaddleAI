@@ -73,16 +73,12 @@ main() {
 
     # Check for pip or pipx
     print_status "Checking for pip/pipx..."
-    HAS_PIP=false
-    HAS_PIPX=false
     INSTALLER=""
 
     if command -v pipx &> /dev/null; then
-        HAS_PIPX=true
         INSTALLER="pipx"
         print_success "pipx found"
     elif command -v pip3 &> /dev/null; then
-        HAS_PIP=true
         INSTALLER="pip"
         print_success "pip3 found"
     else
