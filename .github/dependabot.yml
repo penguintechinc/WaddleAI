@@ -3,6 +3,7 @@ updates:
   # Enable version updates for Python dependencies
   - package-ecosystem: "pip"
     directory: "/"
+    target-branch: "release/v0.2.X"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -23,6 +24,7 @@ updates:
   # Enable version updates for GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
+    target-branch: "release/v0.2.X"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -34,10 +36,20 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
+    groups:
+      # init/analyze/upload-sarif are versioned and released together and
+      # must match exactly -- a split bump (e.g. #170 bumping analyze to
+      # 4.37.9 while #167 bumped init separately) fails CI with "Loaded a
+      # configuration file for version '4.37.6', but running version
+      # '4.37.9'". Group them so Dependabot always proposes one PR.
+      codeql-action:
+        patterns:
+          - "github/codeql-action/*"
 
   # Enable version updates for Docker
   - package-ecosystem: "docker"
     directory: "/proxy"
+    target-branch: "release/v0.2.X"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -63,6 +75,7 @@ updates:
   # exists, so Dockerfile updates for this service were silently never scanned.
   - package-ecosystem: "docker"
     directory: "/services/management"
+    target-branch: "release/v0.2.X"
     schedule:
       interval: "weekly"
       day: "monday"
