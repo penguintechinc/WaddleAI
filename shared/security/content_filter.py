@@ -12,6 +12,7 @@ import re
 import time
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, TypedDict
 
 import aiohttp
@@ -174,6 +175,14 @@ class FilterResult:
     # engine drove a redact/allow decision must be visible on the result
     # itself, not inferred from which packages happen to be installed.
     ner_backend: str = "none"
+    # True if the LLM auditor was invoked but failed and the pipeline fell
+    # back (fail-open) to the rule-based decision alone -- see the
+    # `except Exception` branch below that calls
+    # `_record_fail_mode(phase, "fail_open")`. Mirrors
+    # content_filter_audit_log.degraded (gh-207): a filtering decision made
+    # without the auditor's judgment must be visible in the audit trail,
+    # not silently indistinguishable from a fully-evaluated one.
+    degraded: bool = False
 
 
 # Cached result of the NER-tier flag+licence gate for one org, expired after
@@ -493,6 +502,7 @@ class ContentFilter:
             # Determine action based on violations
             action, filtered_text = self._determine_action(text, violations, phase)
             auditor_used = False
+            auditor_degraded = False
 
             # Phase 3: Invoke LLM auditor for uncertain cases
             if self._should_invoke_auditor(violations, action):
@@ -531,6 +541,7 @@ class ContentFilter:
                         f"Continuing with rule-based decision."
                     )
                     _record_fail_mode(phase, "fail_open")
+                    auditor_degraded = True
 
             # Create result
             result = FilterResult(
@@ -540,6 +551,7 @@ class ContentFilter:
                 filtered_text=filtered_text,
                 auditor_used=auditor_used,
                 ner_backend=self.ner_filter.mode if self.ner_filter is not None else "none",
+                degraded=auditor_degraded,
             )
 
             # Log filtering event
@@ -1658,14 +1670,23 @@ class ContentFilter:
                 violations_json=violations_json,
                 text_sample=text_sample,
                 auditor_used=result.auditor_used,
-                # regression: bug found writing tests/e2e/test_security_pii_e2e.py --
-                # this previously passed timestamp=time.time() (a float epoch), but
-                # the column is Field("timestamp", "datetime", ...) and penguin-dal
-                # (unlike the prior raw-sqlite3 path) rejects a non-datetime value,
-                # so every audit row insert silently failed (caught by this
-                # function's own try/except below) and no PII/injection filtering
-                # decision was ever actually logged. Omit the kwarg and let the
-                # field's own `default=datetime.utcnow` apply.
+                # regression: gh-207 -- `timestamp`/`degraded` are NOT NULL
+                # columns whose only default lived on the *Python-side*
+                # SQLAlchemy model (services/management/app/models_sqlalchemy.py)
+                # and, for `timestamp`, the PyDAL Field() default in
+                # shared/database/models.py. Neither ever applies here:
+                # SQLAlchemy defaults only fire through the SQLAlchemy ORM
+                # insert path, and get_db() reflects this table (already
+                # created by Alembic) before define_tables() runs, so
+                # _define_table_if_absent() skips define_table() entirely
+                # and the PyDAL Field default is never registered either.
+                # A prior fix (see the historical note this replaces) only
+                # ever worked against a self-migrated SQLite schema for
+                # exactly that reason. Both columns are now set explicitly
+                # here AND backed by a server_default in the migration, so
+                # the row is correct regardless of which layer inserts it.
+                timestamp=datetime.utcnow(),
+                degraded=result.degraded,
             )
         except (TypeError, AttributeError, KeyError, NameError, ImportError) as e:
             # A programming defect (schema-drifted column, bad kwarg) --

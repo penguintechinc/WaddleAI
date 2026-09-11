@@ -2,7 +2,10 @@
 
 `content_filter_db` builds a real, sqlite-file-backed `penguin_dal.DAL` with
 the three `content_filter_*` tables (column set mirrors
-`services/management/alembic/versions/005_add_content_filter_tables.py`), so
+`services/management/alembic/versions/005_add_content_filter_tables.py`,
+plus `content_filter_audit_log.degraded` added by migration
+`011_security_v2.py` -- needed since gh-207's fix has `_log_filter_event`
+set it explicitly on every insert), so
 `ContentFilter`'s DB-backed methods (`_load_system_prompt`,
 `_load_shieldgemma_policy`, `_load_disabled_builtins`,
 `_load_disabled_ner_entities`, `_load_custom_rules`, `_log_filter_event`) run
@@ -61,5 +64,6 @@ def content_filter_db(tmp_path: Path) -> DAL:
         Field("violations_json", "json"),
         Field("text_sample", "text"),
         Field("auditor_used", "boolean", default=False),
+        Field("degraded", "boolean", default=False),
     )
     return db
